@@ -1,0 +1,55 @@
+{
+ "auxiliary_weights_gib": {
+  ".": 3.188
+ },
+ "bytes": 311759764531,
+ "dtypes": {
+  "BF16": 13.005,
+  "F16": 0.712,
+  "F32": 0.002,
+  "I16": 273.375,
+  "I32": 0.0
+ },
+ "files": 227,
+ "fit": {
+  "activation_and_graphs_gib": 4.0,
+  "confidence": "estimate: re-measure MemAvailable and the engine KV line on the first boot",
+  "draft_gib": 3.19,
+  "guard_gib": 1.0,
+  "headroom_gib": -161.45,
+  "kv_kib_per_token": 27.5,
+  "kv_tokens": 0,
+  "node_mem_gib": 121.7,
+  "replicated_gib": 274.1,
+  "replicated_modules_sample": [
+   "model.llm.attn_res.attn_queries.0",
+   "model.llm.attn_res.attn_queries.1",
+   "model.llm.attn_res.attn_queries.10",
+   "model.llm.attn_res.attn_queries.11",
+   "model.llm.attn_res.attn_queries.12",
+   "model.llm.attn_res.attn_queries.13",
+   "model.llm.attn_res.attn_queries.14",
+   "model.llm.attn_res.attn_queries.15",
+   "model.llm.attn_res.attn_queries.16",
+   "model.llm.attn_res.attn_queries.17",
+   "model.llm.attn_res.attn_queries.18",
+   "model.llm.attn_res.attn_queries.19"
+  ],
+  "routed_experts_gib": 0.0,
+  "sharded_non_routed_gib": 12.99,
+  "tp": 4,
+  "weights_per_rank_gib": 278.15
+ },
+ "gated": false,
+ "gib": 290.349,
+ "image": null,
+ "license": "apache-2.0",
+ "modules": 111777,
+ "overlay": false,
+ "repo": "0xSero/Inkling-2-Small-EXL3-4bpw",
+ "revision": "996dc404c1feb3abd5330af8a3c52270ffe0008d",
+ "routed_rows": 0,
+ "warnings": [
+  "no MXFP8 non-routed linears: this is not the MiniMax mixed-format pattern"
+ ]
+}
