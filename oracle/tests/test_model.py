@@ -180,7 +180,7 @@ def test_expert_ownership_is_e_mod_tp(tiny, monkeypatch):
     m = make(tp=4)
 
     class OneHot:
-        def ffn_many(self, layer, jobs, gate_cap, up_cap, rounding):
+        def ffn_many(self, layer, jobs, gate_cap, up_cap, rounding, fp16_in=False):
             out = []
             for e, x in jobs:
                 y = np.zeros((x.shape[0], cfg.hidden_size))

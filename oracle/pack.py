@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import get_context
 from typing import Sequence
@@ -107,15 +109,30 @@ def expert_prefix(layer: int, e: int, proj: str) -> str:
 _worker_ix: PackIndex | None = None
 
 
+def exit_with_parent(poll_s: float = 1.0) -> None:
+    """For a pool worker's initializer: exit as soon as the process that started it is gone. A spawn worker whose
+    parent is killed would otherwise wait on its call queue forever (reparented to init), holding its memory."""
+    parent = os.getppid()
+
+    def watch() -> None:
+        while os.getppid() == parent:
+            time.sleep(poll_s)
+        os._exit(1)
+
+    threading.Thread(target=watch, name="exit-with-parent", daemon=True).start()
+
+
 def _worker_init(root: str) -> None:
     global _worker_ix
+    exit_with_parent()
     _worker_ix = PackIndex(root)
 
 
-def _worker_ffn(layer: int, e: int, x: np.ndarray, gate_cap: float, up_cap: float, exact: bool) -> np.ndarray:
+def _worker_ffn(layer: int, e: int, x: np.ndarray, gate_cap: float, up_cap: float, exact: bool,
+                fp16_in: bool = False) -> np.ndarray:
     ix = _worker_ix
     lins = [load_exl3(ix, expert_prefix(layer, e, p)) for p in PROJS]
-    return expert_ffn(*lins, x, gate_cap, up_cap, Rounding.exact() if exact else Rounding())
+    return expert_ffn(*lins, x, gate_cap, up_cap, Rounding.exact() if exact else Rounding(), fp16_in)
 
 
 class PackExperts:
@@ -127,14 +144,15 @@ class PackExperts:
                                             initargs=(index.root,))
 
     def ffn_many(self, layer: int, jobs: Sequence[tuple[int, np.ndarray]], gate_cap: float, up_cap: float,
-                 rounding: Rounding) -> list[np.ndarray]:
+                 rounding: Rounding, fp16_in: bool = False) -> list[np.ndarray]:
         if self.pool is None:
             out = []
             for e, x in jobs:
                 lins = [load_exl3(self.ix, expert_prefix(layer, e, p)) for p in PROJS]
-                out.append(expert_ffn(*lins, x, gate_cap, up_cap, rounding))
+                out.append(expert_ffn(*lins, x, gate_cap, up_cap, rounding, fp16_in))
             return out
-        futs = [self.pool.submit(_worker_ffn, layer, e, x, gate_cap, up_cap, rounding.is_exact) for e, x in jobs]
+        futs = [self.pool.submit(_worker_ffn, layer, e, x, gate_cap, up_cap, rounding.is_exact, fp16_in)
+                for e, x in jobs]
         return [f.result() for f in futs]
 
     def close(self) -> None:

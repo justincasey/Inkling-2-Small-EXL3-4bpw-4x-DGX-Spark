@@ -6,8 +6,11 @@ A boot with DUMP_DIR set (REXL3_INKLING2_DUMP on every rank) writes, per prefill
   rank<r>/chunk<NNNNN>.logits.f32  f32 [rows, SHARD]: soft-capped logits of rank r's vocab shard (global column =
                                    vocab_base + col; global columns >= VOCAB are -inf padding)
 and on rank 0 also chunk<NNNNN>.hidden.bf16 [L+1, rows, H], .hfinal.bf16 [rows, H], .router_idx.i32 [L, rows, K],
-.router_w.f32 [L, rows, K]. Chunk numbers are per rank in call order; a prompt is consecutive chunks of one slot with
-`first` running from 0.
+.router_w.f32 [L, rows, K]. With REXL3_INKLING2_DUMP_OPS=1 (EXTRA_ENV) rank 0 adds the sub-op planes .attn_core.bf16
+[L, rows, 1536] (rank 0's 12 heads before wo), .attn.bf16 [L, rows, H] (after attn_sconv), .mlp_in.bf16 [L, rows, H],
+.router_logits.f32 [L, rows, E] and .moe.f32 [L, rows, H] (all-reduced MoE output before mlp_sconv); they become the
+tensors attn_core, attn, mlp_in, router_logits and moe (oracle/teacher_force.py). Chunk numbers are per rank in call
+order; a prompt is consecutive chunks of one slot with `first` running from 0.
 
 Copy the four rank directories under one DIR, then:
 
@@ -116,6 +119,8 @@ def main(argv=None) -> int:
     ap.add_argument("--hidden", type=int, default=4608)
     ap.add_argument("--layers", type=int, default=48)
     ap.add_argument("--topk", type=int, default=8)
+    ap.add_argument("--experts", type=int, default=384)
+    ap.add_argument("--q-cols", type=int, default=1536, help="attention core columns of rank 0 (12 heads x 128)")
     a = ap.parse_args(argv)
 
     name = a.name or os.path.basename(a.fixture).removesuffix(".safetensors")
@@ -210,6 +215,14 @@ def main(argv=None) -> int:
         tensors.append(("router_idx", "I32", [L, rows, K], layered("router_idx.i32", L, K * 4)))
     if has("router_w.f32"):
         tensors.append(("router_w", "F32", [L, rows, K], layered("router_w.f32", L, K * 4)))
+    # sub-op planes (REXL3_INKLING2_DUMP_OPS=1): the input of oracle/teacher_force.py
+    for suffix, name_, dt, width, size in (("attn_core.bf16", "attn_core", "BF16", a.q_cols, 2),
+                                          ("attn.bf16", "attn", "BF16", H, 2),
+                                          ("mlp_in.bf16", "mlp_in", "BF16", H, 2),
+                                          ("router_logits.f32", "router_logits", "F32", a.experts, 4),
+                                          ("moe.f32", "moe", "F32", H, 4)):
+        if has(suffix):
+            tensors.append((name_, dt, [L, rows, width], layered(suffix, L, width * size)))
     stlite.write_streaming(a.out, tensors, {
         "prompt_len": plen, "source": "rexl3 engine dump", "fixture": name,
         "chunks": ",".join(f"{num}:{take}" for num, take in plan), "dump": os.path.abspath(a.dump)})

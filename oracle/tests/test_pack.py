@@ -3,6 +3,9 @@ loader, expert decode, worker pool, fixture generation and the compare gates."""
 
 import json
 import os
+import subprocess
+import sys
+import time
 
 import numpy as np
 import pytest
@@ -10,6 +13,7 @@ import torch
 
 import compare
 import gen_fixtures
+import pack
 import st
 from inkling2_ref import Inkling2Config, Inkling2Ref
 from pack import PackExperts, PackIndex, PackWeights, load_exl3
@@ -69,6 +73,39 @@ def test_worker_pool_matches_in_process(pack_dir):
     finally:
         mp.experts.close()
     assert torch.equal(a.logits, b.logits)
+
+
+def test_workers_exit_when_their_parent_is_killed(pack_dir, tmp_path):
+    """A killed generator must not leave its spawn workers behind (they held memory on the oracle host)."""
+    root, _ = pack_dir
+    here = os.path.dirname(os.path.abspath(pack.__file__))
+    script = tmp_path / "parent.py"
+    script.write_text(
+        "import sys, time\n"
+        f"sys.path.insert(0, {here!r})\n"
+        "from pack import PackExperts, PackIndex\n"
+        "if __name__ == '__main__':\n"
+        f"    ex = PackExperts(PackIndex({root!r}), workers=2)\n"
+        "    ex.pool.submit(int, 1).result()\n"
+        "    print(*ex.pool._processes, flush=True)\n"
+        "    time.sleep(600)\n")
+    p = subprocess.Popen([sys.executable, str(script)], stdout=subprocess.PIPE, text=True)
+    pids = [int(v) for v in p.stdout.readline().split()]
+    assert pids
+    p.kill()
+    p.wait()
+
+    def alive(pid):
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+
+    deadline = time.time() + 20
+    while any(alive(q) for q in pids) and time.time() < deadline:
+        time.sleep(0.2)
+    assert not any(alive(q) for q in pids)
 
 
 def test_missing_expert_file_is_an_error(pack_dir, tmp_path):

@@ -1,7 +1,7 @@
 """Generate oracle fixtures over a pack folder holding the whole model (every routed expert).
 
     python oracle/gen_fixtures.py --pack DIR --prompts oracle/prompts.jsonl --out DIR [--workers N] [--threads N]
-                                  [--tp 4] [--only NAME ...] [--verify-recompute]
+                                  [--tp 4] [--only NAME ...] [--verify-recompute] [--emulate none|engine|NAMES]
 
 Prompts (JSON lines): {"name": ..., "text": ...} (tokenized with the pack's tokenizer.json, special-token strings
 recognised, nothing added) or {"name": ..., "ids": [...]}, optional "new_tokens" (default --new-tokens).
@@ -9,7 +9,9 @@ Per prompt the oracle prefills, then greedy-decodes from its cache, and writes O
   tokens I64 [N] (prompt + generated), logits F32 [N-1, 200058] (row t predicts token t+1), h_final BF16 [N-1, H],
   hidden BF16 [L+1, N-1, H] (P entering each layer, then P after the last), router_idx I32 / router_w F32
   [L, N-1, k], router_margin F32 [L, N-1]; metadata: prompt_len, tp, pack config sha256, oracle source sha256.
-plus OUT/manifest.json (sha256 of every fixture, decoded continuations, timings).
+plus OUT/manifest.json (sha256 of every fixture, decoded continuations, timings). `--emulate` reproduces the engine's
+lossy numerics (inkling2_ref.Emulation; docs/ORACLE-GAP.md) and is recorded in the metadata as `emulate`; write each
+emulation to its own OUT.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ import time
 import torch
 
 import st
-from inkling2_ref import Inkling2Config, Inkling2Ref, generate
+from inkling2_ref import Emulation, Inkling2Config, Inkling2Ref, generate
 from pack import PackExperts, PackIndex, PackWeights
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -74,6 +76,9 @@ def main(argv=None) -> int:
     ap.add_argument("--only", nargs="*")
     ap.add_argument("--verify-recompute", action="store_true",
                     help="also run every sequence uncached and require identical logits (doubles the cost)")
+    ap.add_argument("--emulate", default="none",
+                    help="engine numerics to reproduce: none (default), engine (all), or a comma list of "
+                         + ", ".join(Emulation.NAMES))
     a = ap.parse_args(argv)
     if a.threads:
         torch.set_num_threads(a.threads)
@@ -87,13 +92,15 @@ def main(argv=None) -> int:
         tok = Tokenizer.from_file(os.path.join(a.pack, "tokenizer.json"))
     ix = PackIndex(a.pack)
     experts = PackExperts(ix, workers=a.workers)
-    model = Inkling2Ref(cfg, PackWeights(ix), experts, tp=a.tp)
+    em = Emulation.parse(a.emulate)
+    model = Inkling2Ref(cfg, PackWeights(ix), experts, tp=a.tp, emulate=em)
     os.makedirs(a.out, exist_ok=True)
     meta_common = {
         "tp": str(a.tp),
         "pack_config_sha256": sha256_file(os.path.join(a.pack, "config.json")),
         "oracle_source_sha256": oracle_source_sha(),
         "numerics_version": NUMERICS_VERSION,
+        "emulate": em.tag,
     }
     manifest_path = os.path.join(a.out, "manifest.json")
     manifest = {"meta": meta_common, "fixtures": {}}

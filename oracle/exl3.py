@@ -157,9 +157,13 @@ def decode_weight(trellis: np.ndarray, codebook_name: str, suh: np.ndarray, svh:
     return w * svh[None, :]
 
 
-def forward(x: np.ndarray, wq: np.ndarray, suh: np.ndarray, svh: np.ndarray) -> np.ndarray:
-    """y = ((((x * suh) @ H_K) @ W_q) @ H_N) * svh in float64; x [rows, K], W_q [K, N] float64 values -> [rows, N]."""
+def forward(x: np.ndarray, wq: np.ndarray, suh: np.ndarray, svh: np.ndarray, in_round=None) -> np.ndarray:
+    """y = ((((x * suh) @ H_K) @ W_q) @ H_N) * svh in float64; x [rows, K], W_q [K, N] float64 values -> [rows, N].
+    `in_round` (optional) rounds the rotated input (x * suh) H_K before the W_q product: REXL3's kernels store it as fp16
+    (`inkling2_ref.Emulation.moe_fp16`)."""
     xh = fwht_128(np.asarray(x, dtype=np.float64) * suh[None, :], axis=1)
+    if in_round is not None:
+        xh = in_round(xh)
     y = xh @ wq
     return fwht_128(y, axis=1) * svh[None, :]
 
@@ -183,8 +187,8 @@ class Exl3Linear:
     def n(self) -> int:
         return self.wq.shape[1]
 
-    def __call__(self, x: np.ndarray) -> np.ndarray:
-        return forward(x, self.wq, self.suh, self.svh)
+    def __call__(self, x: np.ndarray, in_round=None) -> np.ndarray:
+        return forward(x, self.wq, self.suh, self.svh, in_round)
 
 
 def codebook_from_marker(name: str, marker: int) -> str:

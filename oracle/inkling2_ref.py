@@ -85,6 +85,72 @@ def fp32_const(x: float) -> float:
     return float(np.float32(x))
 
 
+def np_f16(x: np.ndarray) -> np.ndarray:
+    """fp32 round, then fp16 round-to-nearest-even (the engine's `__floats2half2_rn` of an fp32 value); finite only."""
+    h = np.asarray(x, dtype=np.float64).astype(np.float32).astype(np.float16)
+    if not np.isfinite(h).all():
+        raise FloatingPointError("value outside fp16 range at an emulated fp16 rounding point")
+    return h.astype(np.float64)
+
+
+def kv8_roundtrip(x: torch.Tensor) -> torch.Tensor:
+    """REXL3's int8 KV (`nemotron_kv8.cuh`) stored and read back, per row of the last dim (one (token, KV head)): e is
+    the smallest exponent with amax / 2^e <= 127 (from amax's fp32 bits), clamped to [-24, 8]; q = rint(x / 2^e)
+    (nearest even), saturated to +-127; the value read is q * 2^e (exact in bf16 and fp16). x holds bf16 values."""
+    amax = x.abs().amax(-1, keepdim=True).to(torch.float32)
+    bits = amax.view(torch.int32).to(torch.int64)
+    big_e = ((bits >> 23) & 0xFF) - 127
+    e = torch.where((bits & 0x7FFFFF) <= 0x7E0000, big_e - 6, big_e - 5).clamp(-24, 8).to(F64)
+    scale = torch.exp2(e)
+    return torch.round(x / scale).clamp(-127, 127) * scale
+
+
+@dataclass(frozen=True)
+class Emulation:
+    """Deliberately lossy engine choices the oracle can reproduce (docs/ORACLE-GAP.md). All off (the default) is the
+    spec's numerics of docs/NUMERICS.md; `engine()` turns on every one the REXL3 port makes:
+
+    * `kv8`: the global layers' K and V are stored as int8 with a power-of-two scale per (token, KV head)
+      (`kv8_roundtrip`); every query, the writing step's own included, reads them back from that store.
+    * `attn_bf16_p`: the attention core's arithmetic structure (`inkling2_attn.cu`): keys in absolute chunks of
+      `chunk_global` / `chunk_local` keys made of absolute `tile`-key tiles, an online softmax per chunk in the exp2
+      domain with P rounded to bf16 for P.V (l sums the unrounded p), the chunk states folded left in ascending order.
+    * `moe_fp16`: the EXL3 expert GEMM inputs (the rotated `x * suh`, and the rotated `act * suh` of the down
+      projection) rounded to fp16 (`moe_experts.cu` / `moe_prefill.cu` `rot_in`, the gate/up epilogue's tail)."""
+
+    kv8: bool = False
+    attn_bf16_p: bool = False
+    moe_fp16: bool = False
+    tile: int = 64
+    chunk_global: int = 512
+    chunk_local: int = 256
+
+    NAMES = ("kv8", "attn_bf16_p", "moe_fp16")
+
+    @staticmethod
+    def engine() -> "Emulation":
+        return Emulation(kv8=True, attn_bf16_p=True, moe_fp16=True)
+
+    @staticmethod
+    def parse(spec: str) -> "Emulation":
+        """'none', 'engine' (all), or a comma list of NAMES."""
+        spec = spec.strip()
+        if spec in ("", "none"):
+            return Emulation()
+        if spec == "engine":
+            return Emulation.engine()
+        names = [s.strip() for s in spec.split(",") if s.strip()]
+        bad = [n for n in names if n not in Emulation.NAMES]
+        if bad:
+            raise ValueError(f"unknown emulation {bad}: choose from none, engine, {', '.join(Emulation.NAMES)}")
+        return Emulation(**{n: True for n in names})
+
+    @property
+    def tag(self) -> str:
+        on = [n for n in self.NAMES if getattr(self, n)]
+        return "none" if not on else "engine" if len(on) == len(self.NAMES) else ",".join(on)
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 # config
 
@@ -185,13 +251,14 @@ class DictWeights:
         return self.t[name][start:stop]
 
 
-Linear = Callable[[np.ndarray], np.ndarray]  # float64 [rows, K] -> float64 [rows, N]
+Linear = Callable[..., np.ndarray]  # float64 [rows, K] -> float64 [rows, N]; EXL3 layers also take `in_round=`
 
 
 class ExpertSource(Protocol):
     def ffn_many(self, layer: int, jobs: Sequence[tuple[int, np.ndarray]], gate_cap: float, up_cap: float,
-                 rounding: Rounding) -> list[np.ndarray]:
-        """For each (expert, x [rows, H] float64 holding bf16 values): the expert's down output [rows, H] float64."""
+                 rounding: Rounding, fp16_in: bool = False) -> list[np.ndarray]:
+        """For each (expert, x [rows, H] float64 holding bf16 values): the expert's down output [rows, H] float64.
+        `fp16_in` emulates the engine's fp16 GEMM inputs (`Emulation.moe_fp16`)."""
         ...
 
 
@@ -206,14 +273,16 @@ def sigmoid_np(x: np.ndarray) -> np.ndarray:
 
 
 def expert_ffn(gate: Linear, up: Linear, down: Linear, x: np.ndarray, gate_cap: float, up_cap: float,
-               rounding: Rounding) -> np.ndarray:
+               rounding: Rounding, fp16_in: bool = False) -> np.ndarray:
     """PORT-SPEC §3.14, NUMERICS U2/U11: g, u rounded to fp32; act = softcap(g, 4) * sigmoid(g) * softcap(u, 25) with the
     sigmoid on the raw g; act rounded to bf16 before the down projection; down output float64 (weighted and summed by the
-    caller)."""
-    g = rounding.np_f32(gate(x))
-    u = rounding.np_f32(up(x))
+    caller). `fp16_in`: each EXL3 layer's rotated input is rounded to fp16 before the W_q product, as REXL3's kernels
+    store it (`Emulation.moe_fp16`); the layers must accept `in_round=`."""
+    lin = (lambda f, v: f(v, in_round=np_f16)) if fp16_in else (lambda f, v: f(v))  # noqa: E731
+    g = rounding.np_f32(lin(gate, x))
+    u = rounding.np_f32(lin(up, x))
     a = softcap_np(g, gate_cap) * sigmoid_np(g) * softcap_np(u, up_cap)
-    return down(rounding.np_bf16(a))
+    return lin(down, rounding.np_bf16(a))
 
 
 class DenseExperts:
@@ -227,7 +296,9 @@ class DenseExperts:
         w = self.w.tensor(f"model.llm.layers.{layer}.mlp.experts.{e}.{proj}.weight").to(F64).numpy()
         return lambda x: x @ w.T
 
-    def ffn_many(self, layer, jobs, gate_cap, up_cap, rounding):
+    def ffn_many(self, layer, jobs, gate_cap, up_cap, rounding, fp16_in=False):
+        if fp16_in:
+            raise ValueError("fp16 GEMM-input emulation is defined on the EXL3 rotated form; dense experts have none")
         return [expert_ffn(self.linear(layer, e, "gate_proj"), self.linear(layer, e, "up_proj"),
                            self.linear(layer, e, "down_proj"), x, gate_cap, up_cap, rounding) for e, x in jobs]
 
@@ -318,6 +389,66 @@ def attention_core(q_hat: torch.Tensor, k_hat: torch.Tensor, v_hat: torch.Tensor
     return r.bf16(out)
 
 
+_LOG2E = 1.4426950408889634
+_LN2 = 0.6931471805599453
+
+
+def attention_core_tiled(q_hat: torch.Tensor, k_hat: torch.Tensor, v_hat: torch.Tensor, bias: torch.Tensor,
+                         gate: torch.Tensor, sink: torch.Tensor, q_pos: torch.Tensor, k_pos: torch.Tensor,
+                         window: int | None, r: Rounding, chunk: int, tile: int) -> torch.Tensor:
+    """§3.11 in the arithmetic structure of REXL3's kernel (`inkling2_attn.cu` header; `Emulation.attn_bf16_p`), the
+    operations in float64. Keys are cut into absolute chunks of `chunk` keys and those into absolute `tile`-key tiles.
+    Per chunk an online softmax over its tiles in ascending order in the exp2 domain: t = (q.k D^-1/2 + bias) log2 e;
+    m' = max(m, tile max); a = 2^(m - m'); p = 2^(t - m'); l = l a + sum p (unrounded); o = o a + bf16(p).V. A tile with
+    no visible key is a no-op for the row. The chunk states are folded left in ascending order (the empty state is an
+    identity), and out = bf16(o / l * sigmoid(gate) * sigmoid(lse - sink)), lse = (m + log2 l) ln 2. With `r` exact, P
+    is not rounded and the result equals `attention_core` up to float64 rounding. Same shapes as `attention_core`."""
+    hq, hkv, d = q_hat.shape[1], k_hat.shape[1], q_hat.shape[2]
+    grp = hq // hkv
+    k_rep = k_hat.repeat_interleave(grp, dim=1)
+    v_rep = v_hat.repeat_interleave(grp, dim=1)
+    s = (torch.einsum("thd,shd->hts", q_hat, k_rep) * (d ** -0.5) + bias) * _LOG2E  # [Hq, T, S]
+    dist = q_pos[:, None] - k_pos[None, :]
+    vis = dist >= 0
+    if window is not None:
+        vis = vis & (dist < window)
+    ninf = float("-inf")
+    s = s.masked_fill(~vis[None], ninf)
+    t = q_hat.shape[0]
+    big_m = torch.full((hq, t), ninf, dtype=F64)
+    big_l = torch.zeros((hq, t), dtype=F64)
+    big_o = torch.zeros((hq, t, d), dtype=F64)
+    tiles, chunks = k_pos // tile, k_pos // chunk
+    for c in torch.unique(chunks).tolist():  # ascending
+        m = torch.full((hq, t), ninf, dtype=F64)
+        ls = torch.zeros((hq, t), dtype=F64)
+        o = torch.zeros((hq, t, d), dtype=F64)
+        for tt in torch.unique(tiles[chunks == c]).tolist():
+            sel = tiles == tt
+            st = s[:, :, sel]
+            tm = st.amax(-1)
+            live = tm > ninf
+            mn = torch.maximum(m, tm)
+            a = torch.where(mn == m, torch.ones_like(m), torch.exp2(m - mn))
+            p = torch.where(st == ninf, torch.zeros_like(st), torch.exp2(st - mn[..., None]))
+            pv = torch.einsum("hts,shd->htd", r.bf16(p), v_rep[sel])
+            ls = torch.where(live, ls * a + p.sum(-1), ls)
+            o = torch.where(live[..., None], o * a[..., None] + pv, o)
+            m = torch.where(live, mn, m)
+        take = (big_m == ninf) & (m > ninf)
+        both = (big_m > ninf) & (m > ninf)
+        mn = torch.maximum(big_m, m)
+        sa = torch.where(big_m == mn, torch.ones_like(mn), torch.exp2(big_m - mn))
+        sb = torch.where(m == mn, torch.ones_like(mn), torch.exp2(m - mn))
+        big_l = torch.where(take, ls, torch.where(both, big_l * sa + ls * sb, big_l))
+        big_o = torch.where(take[..., None], o,
+                            torch.where(both[..., None], big_o * sa[..., None] + o * sb[..., None], big_o))
+        big_m = torch.where(take, m, torch.where(both, mn, big_m))
+    lse = (big_m + torch.log2(big_l)) * _LN2  # [Hq, T]
+    out = (big_o / big_l[..., None]).permute(1, 0, 2) * torch.sigmoid(gate) * torch.sigmoid(lse.T - sink)[..., None]
+    return r.bf16(out)
+
+
 def route(logits: torch.Tensor, bias: torch.Tensor, k: int, scale: float, r: Rounding):
     """§3.13 on fp32 router logits [T, E]: select by sigmoid(logit) + bias, top-k, ties to the lower expert index;
     weights = scale * sigmoid / sum over the selected sigmoids (fp32). Returns (idx [T, k] in selection order,
@@ -385,7 +516,8 @@ class ForwardOut:
 
 class Inkling2Ref:
     def __init__(self, cfg: Inkling2Config, weights: WeightSource, experts: ExpertSource, tp: int = 4,
-                 rounding: Rounding | None = None, unembed_chunk: int = 16384, query_chunk: int = 256):
+                 rounding: Rounding | None = None, unembed_chunk: int = 16384, query_chunk: int = 256,
+                 emulate: Emulation | None = None):
         if cfg.num_heads % tp or cfg.num_kv_heads % tp:
             raise ValueError(f"tp={tp} does not divide {cfg.num_heads} q / {cfg.num_kv_heads} kv heads")
         self.cfg = cfg
@@ -393,19 +525,32 @@ class Inkling2Ref:
         self.experts = experts
         self.tp = tp
         self.r = rounding or Rounding()
+        self.em = emulate or Emulation()
         self.unembed_chunk = unembed_chunk
         self.query_chunk = query_chunk
         # stored activations are bf16, fp32-named outputs fp32; the unrounded mode keeps float64 throughout
         self.store_dtype = F64 if self.r.is_exact else torch.bfloat16
         self.out_dtype = F64 if self.r.is_exact else torch.float32
+        # when a dict: layer -> {sub-op name -> output} of the last forward (`core`, `attn`, `mlp_in`, `router_logits`,
+        # `moe`), for oracle/teacher_force.py
+        self.taps: dict | None = None
+
+    def _tap(self, i: int, name: str, x: torch.Tensor) -> None:
+        if self.taps is not None:
+            self.taps.setdefault(i, {})[name] = x
 
     # weights ------------------------------------------------------------------------------------------------------
     def w64(self, name: str) -> torch.Tensor:
         return self.w.tensor(name).to(F64)
 
+    def matmul(self, x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+        """x . W^T of a dense bf16 op (projections, wo partials, router), accumulated in float64 (NUMERICS U3). The one
+        hook oracle/teacher_force.py overrides to measure the noise floor of fp32 accumulation."""
+        return x @ w.T
+
     def lin(self, x: torch.Tensor, name: str) -> torch.Tensor:
         """Dense bf16 linear: bf16(x . W^T), float64 accumulate (NUMERICS U3)."""
-        return self.r.bf16(x @ self.w64(name).T)
+        return self.r.bf16(self.matmul(x, self.w64(name)))
 
     def query(self, name: str) -> torch.Tensor:
         """AttnRes pseudo-query pre-scaled once in fp32 by H^-1/2 (NUMERICS U10)."""
@@ -466,6 +611,8 @@ class Inkling2Ref:
             tau = log_tau(pos, c.log_scaling_n_floor, c.log_scaling_alpha, r)[:, None, None]
             q_hat = r.bf16(q_hat * tau)
             r_hat = r.bf16(r_hat * tau)
+        if glob and self.em.kv8:  # every query reads the int8 store, the writing step's own rows included
+            k_hat, v_hat = kv8_roundtrip(k_hat), kv8_roundtrip(v_hat)
         lc.k = torch.cat([lc.k, k_hat])
         lc.v = torch.cat([lc.v, v_hat])
         k_pos = torch.arange(lc.k_start, lc.k_start + lc.k.shape[0])
@@ -475,39 +622,62 @@ class Inkling2Ref:
         for a in range(0, t, self.query_chunk):  # bounds the [Hq, T, S] score memory on long prompts
             b = min(a + self.query_chunk, t)
             bias = relative_bias(r_hat[a:b], rel_proj, pos[a:b], k_pos, r)
-            outs.append(attention_core(q_hat[a:b], lc.k, lc.v, bias, gate[a:b], sink[a:b], pos[a:b], k_pos, window, r))
+            args = (q_hat[a:b], lc.k, lc.v, bias, gate[a:b], sink[a:b], pos[a:b], k_pos, window, r)
+            if self.em.attn_bf16_p:
+                chunk = self.em.chunk_global if glob else self.em.chunk_local
+                outs.append(attention_core_tiled(*args, chunk=chunk, tile=self.em.tile))
+            else:
+                outs.append(attention_core(*args))
         out = torch.cat(outs).reshape(t, hq * d)
+        self._tap(i, "core", out)
         if not glob:  # ring: keep what the next query (position pos[-1] + 1) can see
             keep = c.sliding_window - 1
             drop = max(0, lc.k.shape[0] - keep)
             lc.k, lc.v, lc.k_start = lc.k[drop:], lc.v[drop:], lc.k_start + drop
         wo = self.w64(pre + "wo_ud.weight")
         cols = hq * d // self.tp
-        partials = [r.bf16(out[:, j * cols:(j + 1) * cols] @ wo[:, j * cols:(j + 1) * cols].T) for j in range(self.tp)]
+        partials = [r.bf16(self.matmul(out[:, j * cols:(j + 1) * cols], wo[:, j * cols:(j + 1) * cols]))
+                    for j in range(self.tp)]
         return allreduce(partials, r)
 
     # MoE ----------------------------------------------------------------------------------------------------------
-    def moe(self, i: int, x: torch.Tensor, rec: dict | None) -> torch.Tensor:
+    def router(self, i: int, x: torch.Tensor):
+        """§3.13 of layer i on rows x: (fp32 logits [T, E], idx [T, k], weights [T, k], margin [T]) (see `route`)."""
         c, r = self.cfg, self.r
         pre = f"model.llm.layers.{i}.mlp."
-        logits = r.f32(x @ self.w64(pre + "gate.weight").T)  # [T, E]
-        idx, w, margin = route(logits, self.w.tensor(pre + "gate.bias").to(F64), c.top_k, c.route_scale, r)
+        logits = r.f32(self.matmul(x, self.w64(pre + "gate.weight")))  # [T, E]
+        return (logits, *route(logits, self.w.tensor(pre + "gate.bias").to(F64), c.top_k, c.route_scale, r))
+
+    @staticmethod
+    def expert_jobs(x: torch.Tensor, idx: torch.Tensor):
+        """Per expert picked in idx [T, k] (ascending): the job (expert, its rows of x as numpy) and (tokens, slots)."""
+        x_np = x.numpy()
+        jobs, rows = [], []
+        for e in sorted(set(idx.flatten().tolist())):
+            tok, slot = torch.nonzero(idx == e, as_tuple=True)
+            jobs.append((e, x_np[tok.numpy()]))
+            rows.append((tok, slot))
+        return jobs, rows
+
+    def combine(self, jobs, rows, outs, w: torch.Tensor, shape) -> torch.Tensor:
+        """The expert outputs times their routing weights, summed per owning rank (E mod tp) in float64, each rank's
+        partial rounded to bf16, then the all-reduce (§2, NUMERICS U2)."""
+        acc = torch.zeros(self.tp, *shape, dtype=F64)
+        for (e, _), (tok, slot), y in zip(jobs, rows, outs):
+            acc[e % self.tp].index_add_(0, tok, torch.from_numpy(y) * w[tok, slot][:, None])
+        return allreduce([self.r.bf16(acc[j]) for j in range(self.tp)], self.r)
+
+    def moe(self, i: int, x: torch.Tensor, rec: dict | None) -> torch.Tensor:
+        c = self.cfg
+        logits, idx, w, margin = self.router(i, x)
+        self._tap(i, "router_logits", logits)
         if rec is not None:
             rec["idx"].append(idx.to(torch.int32))
             rec["w"].append(w.to(self.out_dtype))
             rec["margin"].append(margin.to(self.out_dtype))
-        experts = sorted(set(idx.flatten().tolist()))
-        x_np = x.numpy()
-        jobs, rows = [], []
-        for e in experts:
-            tok, slot = torch.nonzero(idx == e, as_tuple=True)
-            jobs.append((e, x_np[tok.numpy()]))
-            rows.append((tok, slot))
-        outs = self.experts.ffn_many(i, jobs, c.gate_softcap, c.up_softcap, r)
-        acc = torch.zeros(self.tp, *x.shape, dtype=F64)
-        for (e, _), (tok, slot), y in zip(jobs, rows, outs):
-            acc[e % self.tp].index_add_(0, tok, torch.from_numpy(y) * w[tok, slot][:, None])
-        return allreduce([r.bf16(acc[j]) for j in range(self.tp)], r)
+        jobs, rows = self.expert_jobs(x, idx)
+        outs = self.experts.ffn_many(i, jobs, c.gate_softcap, c.up_softcap, self.r, fp16_in=self.em.moe_fp16)
+        return self.combine(jobs, rows, outs, w, x.shape)
 
     # forward ------------------------------------------------------------------------------------------------------
     def embed(self, ids: torch.Tensor) -> torch.Tensor:
@@ -541,6 +711,7 @@ class Inkling2Ref:
         xq, xk, xv = (xs[0], xs[1], xs[2]) if glob else (xs[0], xs[0], xs[0])
         a_raw = self.attention(i, xq, xk, xv, pos, lc)
         a, lc.conv["attn"] = static_conv(a_raw, self.w64(ln + "attn_sconv.weight")[:, 0, :], lc.conv["attn"], r)
+        self._tap(i, "attn", a)
         if i % c.layers_per_block == 0:
             blocks.append(p)
             part = a
@@ -548,7 +719,9 @@ class Inkling2Ref:
             part = r.f32(p + a)  # fp32, not rounded to bf16 (§3.2)
         mlp_in = self.mix(blocks, part, self.query(f"model.llm.attn_res.mlp_queries.{i}"),
                           [self.w64(ln + "mlp_norm.weight")])[0]
+        self._tap(i, "mlp_in", mlp_in)
         m_raw = self.moe(i, mlp_in, rec)
+        self._tap(i, "moe", m_raw)
         m, lc.conv["mlp"] = static_conv(m_raw, self.w64(ln + "mlp_sconv.weight")[:, 0, :], lc.conv["mlp"], r)
         return r.bf16(r.f32(part + m))
 
