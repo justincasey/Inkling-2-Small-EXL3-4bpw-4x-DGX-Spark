@@ -23,9 +23,18 @@ ok() { printf 'ok   %s\n' "$*"; }
 bad() { printf 'FAIL %s\n' "$*"; fails=$((fails + 1)); }
 
 # ── shell syntax ──
-for f in inkling2.sh config/pins.sh scripts/*.sh tests/*.sh; do
+for f in inkling2.sh autoresearch.sh config/pins.sh scripts/*.sh tests/*.sh; do
   if "$BASH_BIN" -n "$f"; then ok "bash -n $f"; else bad "bash -n $f"; fi
 done
+# the harness header lists every gate id it requires (a gate that is scored but undocumented, or documented but not scored, is a bug)
+req=$(sed -n 's/^REQUIRED_GATES="\(.*\)"$/\1/p' autoresearch.sh)
+[[ -n $req ]] || bad "autoresearch.sh has no REQUIRED_GATES"
+for g in $req; do
+  if grep -Eq "^#   $g +[^ ]" autoresearch.sh; then ok "autoresearch.sh header documents gate $g"; else bad "autoresearch.sh header does not document gate '$g'"; fi
+done
+listed=$(sed -n '/^# Fixed gates/,/^# Reference replies/p' autoresearch.sh | sed -n 's/^#   \([a-z][a-z]*\) \{2,\}[^ ].*/\1/p' | sort | paste -sd' ' -)
+[[ $listed == "$(tr ' ' '\n' <<<"$req" | sort | paste -sd' ' -)" ]] \
+  && ok "the header's gate list is exactly REQUIRED_GATES" || bad "header gates [$listed] differ from REQUIRED_GATES [$req]"
 
 # ── print-serve: the engine contract ──
 # The caller's environment beats .env: pin the tunables to their contract defaults so a local .env cannot hide a bug.
@@ -211,7 +220,8 @@ wait_for 'grep -q " armed " "$tmp/ready.guard.log" 2>/dev/null' || bad "guard di
 meminfo 1500 100   # ready floor 1024: survives
 sleep 0.5
 kill -0 "$rpid" 2>/dev/null && ok "once ready, 1500 MiB is above the floor" || bad "guard killed above the ready floor"
-echo w1 > "$tmp/ready.window"; meminfo 3000 100
+meminfo 3000 100; sleep 0.3   # the guard has sampled 3000 before the window opens (a sample between two writes would keep 1500)
+echo w1 > "$tmp/ready.window"
 wait_for '[[ $(get ready window) == w1 && $(get ready window_min_mib) == 3000 ]]' \
   && ok "memwatch window restarts its minimum (3000 MiB, overall $(get ready min_mib))" || bad "window minimum: $(get ready window_min_mib)"
 [[ $(get ready ready_min_mib) == 1500 ]] && ok "ready minimum recorded" || bad "ready minimum: $(get ready ready_min_mib)"
@@ -236,6 +246,9 @@ if res=$(python3 tests/test_merge_dump.py "${cmp[@]}" 2>&1); then grep '^ok' <<<
 
 # ── gates / smoke helpers ──
 if res=$(python3 tests/test_gates.py 2>&1); then grep '^ok' <<<"$res"; else echo "$res"; bad "tests/test_gates.py"; fi
+
+# ── harness: score zeroing, pin comparison ──
+if res=$(python3 tests/test_bench.py 2>&1); then grep '^ok' <<<"$res"; else echo "$res"; bad "tests/test_bench.py"; fi
 
 echo
 if (( fails == 0 )); then echo "test_recipe: all checks passed"; else echo "test_recipe: $fails check(s) failed"; exit 1; fi

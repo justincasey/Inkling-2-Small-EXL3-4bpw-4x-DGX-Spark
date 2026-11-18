@@ -39,6 +39,12 @@
 #                  window, while loading, once ready, overall (the guards' records)
 #   record NAME    create bench/records/<date>-NAME/meta.json: engine commit and sha256 from the installed binaries,
 #                  pack revision, pins, configuration and every rank's print-serve line
+#   gpu-clocks MHZ|reset|status
+#                  lock every rank's GPU SM clock at MHZ (sudo -n nvidia-smi -lgc; site policy 2200), release it, or show the
+#                  current and maximum clock
+#   engine-test host|goldens
+#                  the engine's tests on rank 0 from the installed source, engine stopped: host = the Inkling 2 tests that need
+#                  no GPU; goldens = the five Inkling 2 GPU golden tests (kernel hashes), under the lab GPU lock
 #   stop-other     run STOP_OTHER: take down the stack that normally owns these GPUs (DeepSeek-V4.1 4x, spark-ds41f)
 #   restore-other  stop this stack, then run RESTORE_OTHER
 #   help
@@ -657,6 +663,73 @@ print(os.path.join(e["REC_DIR"], "meta.json"))
 PY
 }
 
+# gpu-clocks MHZ|reset|status: the site clock policy (user, 2026-11-10: GPUs capped at 2200 MHz for every measured run, as the
+# DeepSeek and CYBERFROST recipes do). `nvidia-smi -lgc` needs sudo and does not survive a reboot or a driver reload.
+cmd_gpu_clocks() {
+  local what=${1:-}
+  case $what in
+    status) every 'nvidia-smi --query-gpu=clocks.sm,clocks.max.sm --format=csv,noheader' ;;
+    reset) every 'sudo -n nvidia-smi -rgc >/dev/null && echo "clock lock released"' ;;
+    *[!0-9]*|"") die "usage: gpu-clocks MHZ|reset|status" ;;
+    *) every 'sudo -n nvidia-smi -lgc "$MHZ,$MHZ" >/dev/null && echo "SM clock locked at $MHZ MHz"' MHZ="$what" ;;
+  esac
+}
+
+# engine-test host|goldens: the engine's own tests on rank 0, from the source `build` installed ($BASE_DIR/src, the commit in
+# bin/rexl3-serve.commit), with every rexl3-serve stopped. Each suite must run at least one test; a golden that skips for want
+# of a device or the pack ("not run") fails. The two gitignored nemotron fixtures that gb-model's test build includes are
+# created empty if absent and removed again (the Inkling 2 tests do not read them).
+cmd_engine_test() {
+  local which=${1:-}
+  [[ $which == host || $which == goldens ]] || die "usage: engine-test host|goldens"
+  remote 0 '
+    pgrep -f "[r]exl3-serve" >/dev/null && { echo "FAIL rexl3-serve is running on rank 0: ./inkling2.sh stop" >&2; exit 1; }
+    sha=$(cat "$BASE_DIR/bin/rexl3-serve.commit" 2>/dev/null) || { echo "FAIL no engine installed (./inkling2.sh build)" >&2; exit 1; }
+    [[ -d $BASE_DIR/src ]] || { echo "FAIL no engine source at $BASE_DIR/src (./inkling2.sh build)" >&2; exit 1; }
+    cd "$BASE_DIR/src"
+    export PATH=/usr/local/cuda/bin:$HOME/.cargo/bin:$PATH CUDA_HOME=/usr/local/cuda REXL3_CUDA_ARCH=sm_121 \
+      REXL3_COMMIT="$sha" CARGO_TARGET_DIR="$BASE_DIR/target"
+    made=()
+    cleanup() { rm -f "${made[@]}"; }
+    trap cleanup EXIT
+    for f in layer1_fixture layer1_fixture_repaired; do
+      p=testdata/nemotron_omni/moe/$f.safetensors
+      [[ -e $p ]] || { mkdir -p "${p%/*}"; : > "$p"; made+=("$p"); }
+    done
+    # run LABEL CARGO-ARGS...: one suite; ok only when it ran at least one test and nothing failed or skipped
+    run() {
+      local label=$1 out; shift
+      out=$(mktemp)
+      if cargo +"$TOOLCHAIN" test --release --locked "$@" >"$out" 2>&1 \
+        && grep -Eq "^test result: ok\. [1-9][0-9]* passed" "$out" && ! grep -qi "not run" "$out"; then
+        echo "ok   $label: $(grep -E "^test result: ok" "$out" | head -n 1)"
+        rm -f "$out"
+      else
+        echo "FAIL $label" >&2; tail -n 40 "$out" >&2; rm -f "$out"; exit 1
+      fi
+    }
+    echo "engine $sha"
+    if [[ $WHICH == host ]]; then
+      run "gb-model families::inkling2" -p gb-model --lib inkling2
+      run "gb-cuda inkling2" -p gb-cuda --lib inkling2
+      run "gb-server formats::inkling2" -p gb-server --lib formats::inkling2
+      run "gb-server inkling2_format" -p gb-server --test inkling2_format
+    else
+      (
+        exec 9>>/tmp/rexl3-gpu.lock
+        flock -x -n 9 || { echo "FAIL /tmp/rexl3-gpu.lock is held by another GPU job" >&2; exit 1; }
+        run "golden attn" -p gb-cuda --test inkling2_attn golden_inkling2_attn_hashes -- --test-threads=1 --nocapture
+        run "golden ops" -p gb-cuda --test inkling2_ops golden_inkling2_ops_hashes -- --test-threads=1 --nocapture
+        run "golden moe" -p gb-cuda --test inkling2_moe golden_inkling2_moe_hashes -- --test-threads=1 --nocapture
+        run "golden vision" -p gb-model --test inkling2_vision golden_inkling2_vision_hashes -- --test-threads=1 --nocapture
+        REXL3_INKLING2_DIR="$MODEL_DIR" run "golden dspark" -p gb-cuda --test inkling2_dspark golden_inkling2_dspark_hashes \
+          -- --test-threads=1 --nocapture
+      )
+    fi
+    echo "engine-test $WHICH: pass"' \
+    BASE_DIR="$BASE_DIR" WHICH="$which" TOOLCHAIN="$RUST_TOOLCHAIN" MODEL_DIR="$MODEL_DIR"
+}
+
 cmd_stop_other() { [[ -n $STOP_OTHER ]] || die "STOP_OTHER is not set (.env.example)"; log "STOP_OTHER"; bash -c "$STOP_OTHER"; }
 cmd_restore_other() {
   [[ -n $RESTORE_OTHER ]] || die "RESTORE_OTHER is not set (.env.example)"
@@ -680,6 +753,8 @@ case ${1:-help} in
   smoke) cmd_smoke ;;
   memwatch) shift; cmd_memwatch "$@" ;;
   record) shift; cmd_record "$@" ;;
+  gpu-clocks) shift; cmd_gpu_clocks "$@" ;;
+  engine-test) shift; cmd_engine_test "$@" ;;
   stop-other) cmd_stop_other ;;
   restore-other) cmd_restore_other ;;
   help|-h|--help) cmd_help ;;

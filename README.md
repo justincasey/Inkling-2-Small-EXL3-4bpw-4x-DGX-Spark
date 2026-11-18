@@ -69,6 +69,23 @@ Earlier records: first TP4 boots, 200K and 1M single-lane needles (`2026-11-18-i
   kills a rank at 2 GiB (loading) / 1 GiB (ready) MemAvailable, or on swap growth under the engine's 8 GiB floor.
 - **Decisions** with evidence: `docs/DECISIONS.md`. Op-by-op model spec: `docs/PORT-SPEC.md`.
 
+## Performance harness
+
+`./autoresearch.sh` is the benchmark of the performance phase ([`docs/AUTORESEARCH-HANDOFF.md`](docs/AUTORESEARCH-HANDOFF.md)):
+it builds the candidate engine commit (`CANDIDATE_SRC`, default `~/projects/rexl3-inkling2-ar`), locks the GPU clocks at
+2200 MHz, runs the engine's host and golden tests, boots the group twice (prefill chunk 4096, then 1000), runs
+`bench/tools/bench.py` (decode c = 1/4/8, cold 32K/128K/1M prefill, replies pinned in `bench/reference.json`) and the
+correctness gates, and prints `METRIC` lines. `target_score` is 0 unless every gate in the script's header printed `PASS`.
+
+```bash
+./inkling2.sh stop-other                 # once per session, if the DeepSeek stack holds the GPUs; restore-other at the end
+PIN=1 ./autoresearch.sh                  # once, on the unmodified pinned engine: writes the two reference files
+./autoresearch.sh                        # a full run (about 50 minutes today, 25 of them the 1M prefill)
+PHASES=warm,decode ./autoresearch.sh     # a screen: raw numbers, target_score 0
+```
+
+Scope: bit-preserving work only. The `oracle` gate (bit-changing kernel work) is not wired in; see the script's header.
+
 ## Known gaps (next phase)
 
 - Decode runs eagerly (no CUDA graphs); no kernel tuning was done. Targets and ceilings: `docs/ROOFLINE.md`.

@@ -117,8 +117,35 @@ rank ideas. A full run keeps one. Full four-node boots take about 90–105 s eac
   must agree by sha256. One candidate at a time: the four GPUs form one group.
 - **Locks:** each rank holds `flock /tmp/rexl3-gpu.lock` for its life. Single-node kernel experiments take the same
   lock exclusively and stay short.
-- **Clocks:** `GPU_CLOCKS=2200` lock as in the DeepSeek and CYBERFROST recipes (site policy). The controller does not
-  lock clocks yet; add it in the harness.
+- **Clocks:** `GPU_CLOCKS=2200` lock as in the DeepSeek and CYBERFROST recipes (site policy); the harness sets it through
+  `./inkling2.sh gpu-clocks` and samples every rank's clock.
+
+### 3a. The harness as built (2026-11-18)
+
+`./autoresearch.sh` (header: contract, gates, phases), `bench/tools/{bench,score,memcheck}.py`, controller commands
+`gpu-clocks` and `engine-test`, `tests/test_bench.py`. The references are pinned from the unmodified engine
+(`bench/reference.json`, `bench/reference-vision.json`). Engine candidates are commits of the worktree
+`~/projects/rexl3-inkling2-ar` (branch `inkling2-ar` off `inkling2` @ `f4e27ca`). Where it differs from §3:
+
+- `decode-long` has no phase of its own: the cold 32K, 128K and 1M prefill requests each generate 128 tokens, so
+  `decode_ctx32k/128k/1m_tok_s` come from the same requests as `prefill_*_tok_s`.
+- Times come from the server's histograms `rexl3_request_ttft_seconds` (prefill) and `rexl3_request_e2e_seconds`
+  (decode = (completion_tokens - 1) / (e2e - ttft)), read around solo requests. `decode_c1_tok_s` is the mean of the
+  four per-type rates; c = 8 runs two waves of the 4 slots.
+- The 1M prompt goes as text (about 1,008,000 tokens): the server refuses a request body of more than 300,000 JSON
+  nodes, so a million ids cannot be sent. The 32K and 128K prompts go as ids.
+- `goldens` = `testdata/gpu` byte-identical to the pinned engine's, plus the five Inkling 2 GPU golden tests passing
+  without skipping. Other families' golden tests are not run (their writers are `#[ignore]` and need a wrapper).
+- `memory` normalizes each rank's minimum to the recorded 6.03 GiB prefix cache (`memcheck.py`). The capacity plan reads
+  free memory at boot and gives the cache what is left: 6.03 GiB on an idle node, 4.52 GiB after the engine tests had
+  run, whatever `drop_caches` does. Raw minima differ by about 1.4 GiB between those boots.
+- The `oracle` gate is not wired in (Segment B; see §4).
+
+Baseline of the unmodified engine, from the pin run, one validation full run and two screens (four decode runs in all):
+`decode_c1_tok_s` 42.2 (prose 22.0, code 67.4, structured 26.4, json 53.1; acceptance 0.307, 3.13 tokens a round),
+`prefill_32k_tok_s` 1,304, `prefill_128k_tok_s` 1,199, `prefill_1m_tok_s` 689 (1,463 s), `decode_c4` 52.0, `decode_c8` 57.3,
+decode at 32K / 128K / 1M context 40.4 / 31.8 / 28.1, `target_score_raw` 0.443. Repeat spread: `decode_c1_tok_s` within 0.6%
+over the four runs, `prefill_32k_tok_s` within 0.02% over two. A full run takes 49 minutes, 24 of them the 1M prefill.
 
 ## 4. Byte-exact policy: a decision to take before tuning
 
