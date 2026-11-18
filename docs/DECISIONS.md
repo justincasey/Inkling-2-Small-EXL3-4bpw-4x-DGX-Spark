@@ -21,6 +21,8 @@ One bullet per decision: what, why, evidence, risk. "User" marks a decision the 
 ## Targets (user)
 - 1,048,576-token context per lane; 4–8 lanes, as many as fit.
 - Decode 70 tok/s (c=1, ≤ 32K, DSpark on); prefill 4,000+ tok/s (32K).
+- **Scope of this phase (user, 2026-11-17):** stop at a working, verified base recipe. The performance targets above
+  belong to the next phase (autoresearch harness and iterations); kernels here aim at correctness and determinism.
 - Byte-exact decode and prefill against a **pinned engine reference with int8 KV** (user, 2026-11-17): replies equal
   the pinned engine's; drafted == serial, cached == uncached, concurrent == solo, chunk width does not change a byte.
   int8 KV is REXL3's Nemotron format (per token and KV head, power-of-two scale); REXL3 rejects FP8 KV

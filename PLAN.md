@@ -10,21 +10,29 @@
 
 ## Phases
 
+This phase ends at a working, verified base recipe (user, 2026-11-17): boots TP4, serves, passes the correctness
+gates, first boot recorded. Performance toward the targets is the next phase (autoresearch harness + iterations).
+
 - [x] intake: manifest, census, per-rank file split (`intake/`, `config/pack-ranks.tsv`), fit (`docs/FIT.md`)
-- [ ] staging: `./inkling2.sh fetch` + `verify` on all four nodes
-- [ ] spec: op-by-op forward of target, drafter, vision (`docs/PORT-SPEC.md`)
-- [ ] oracle: layer-at-a-time reference over the pack, token/logit fixtures
-- [ ] engine family `inkling2`: config, loader/bind (E mod 4 expert split), forward on one rank vs oracle
-- [ ] kernels: attention (relative logits, log scaling, l2 clips, sinks, gate, window/full), short convs, softcapped
-      MoE activation, logit softcap, attention-residual blocks
-- [ ] TP4 bring-up: first four-rank REXL3 group on the switch
+- [x] staging: `./inkling2.sh fetch` + `verify` on all four nodes (91.02 GB each, sha256-verified)
+- [x] spec: op-by-op forward of target, drafter, vision (`docs/PORT-SPEC.md`, `docs/NUMERICS.md`)
+- [ ] oracle: fp64 reference (`oracle/`, done) + real-pack fixtures (running on rank 0)
+- [x] engine family `inkling2` host half: config, inventory, bind (E mod 4), memory model, chat format
+- [ ] kernels: attention (relative logits, log scaling, l2 clips, sinks, gate, window/full, int8 KV), short convs,
+      softcapped MoE activation, fp32 router, AttnRes mix, logit softcap, bf16-input linear
+- [ ] forward assembly + TP4 bring-up: first four-rank REXL3 group on the switch
 - [ ] KV pool with 1M lanes, DSpark drafter, vision tower
-- [ ] controller: doctor/build/start/stop/status/logs/smoke/print-serve, memory guard, STOP_OTHER/RESTORE_OTHER
-- [ ] eval ladder: smoke → probe → spec → pin/check → needle → quality → tools → api-test → bench → longctx
-- [ ] first boot record, README numbers, autoresearch toward the targets
+- [x] controller: doctor, fetch, verify, build
+- [ ] controller: start/stop/status/logs/smoke/print-serve, memory guard, STOP_OTHER/RESTORE_OTHER
+- [ ] correctness ladder: smoke → probe → oracle compare → pin/check → drafted == serial → cached == uncached →
+      needle → quality → tools → api-test; first boot record
+- [ ] stop: hand off to the autoresearch phase
 
 ## Open questions
 
 - 70 tok/s: DSpark acceptance (unmeasured) vs requantizing BF16 attention before the baseline (changes the pack).
 - REXL3 four-rank groups are built but unmeasured upstream (`docs/examples/cluster.4node.json`).
 - REXL3 refuses `json_schema` response formats; acceptable for the clients?
+- Pack identity under split staging: `rexl3-serve --print-fingerprints` on rank 0's share gives
+  `sha256:ce6f9f1c…`, which covers only that rank's expert groups; the TP boot gate and a `VALIDATED_*` entry need an
+  identity every rank computes alike (shared tensors + the manifest), or per-rank expected fingerprints.
