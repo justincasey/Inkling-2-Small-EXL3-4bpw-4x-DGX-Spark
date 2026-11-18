@@ -9,9 +9,14 @@
 # assignment (scripts/pack_ranks.py checks it against the files' own headers); intake/manifest.tsv holds the sha256s.
 #
 # Usage: ./inkling2.sh <command> [args]
+#   doctor         read-only: GPU idle and alike on every rank, memory, foreign containers, staged pack files,
+#                  fabric reachability between all ranks, pinned NCCL library, installed engine commit
 #   fetch          each rank downloads its own expert files; rank 0 downloads the shared files and sends them to
 #                  ranks 1-3 over the fabric; then verify
 #   verify         sha256 of every file each rank holds, all four ranks in parallel (no download)
+#   build [REV]    build rexl3-serve + rexl3-cluster on rank 0 from the local engine repository (REXL3_SRC) at
+#                  REXL3_COMMIT (config/pins.sh) or the lab revision REV, install under BASE_DIR/bin and ship the
+#                  binaries to ranks 1-3 over the fabric; every rank must report the same sha256 and commit
 #   files RANK     print the pack paths RANK holds
 #   help
 #
@@ -43,6 +48,9 @@ source "$ROOT/config/pins.sh"
 : "${SSH_USER:=spark}"
 : "${MODELS_DIR:=/home/spark/models}"
 : "${HF_BIN:=/home/spark/venvs/hf/bin/hf}"
+: "${BASE_DIR:=/home/spark/inkling-2-small-exl3-4bpw-4x-dgx-spark}"           # engine build, binaries, logs on each node
+: "${REXL3_SRC:=$HOME/projects/REXL3}"                                          # local engine git repository (this machine)
+: "${ALLOWED_CONTAINERS:=mentatd glm53-nfs}"                                    # containers that may run beside the ranks
 RANKS_FILE=config/pack-ranks.tsv
 
 read -r -a NODE <<<"$NODES"
@@ -133,10 +141,105 @@ cmd_fetch() {
   log "fetch: every rank holds and has verified its files"
 }
 
+# every SCRIPT [VAR=value ...]: run on all ranks in parallel; output printed per rank in order, prefixed [rN];
+# fails if any rank fails.
+every() {
+  local r rc=0 tmp; tmp=$(mktemp -d)
+  local -a ep=()
+  for r in 0 1 2 3; do ( remote "$r" "$@" >"$tmp/$r" 2>&1 && echo 0 >"$tmp/$r.rc" || echo $? >"$tmp/$r.rc" ) & ep+=($!); done
+  wait "${ep[@]}" || true
+  for r in 0 1 2 3; do sed "s/^/[r$r] /" "$tmp/$r"; [[ $(<"$tmp/$r.rc") == 0 ]] || rc=1; done
+  rm -rf "$tmp"
+  return $rc
+}
+
+cmd_doctor() {
+  local r out bad=0 tmp; tmp=$(mktemp -d)
+  # Each rank checks itself; a FAIL line fails the doctor. Driver and engine lines are then compared across ranks.
+  for r in 0 1 2 3; do
+    remote "$r" '
+      fail() { echo "FAIL $*"; }
+      gpu=$(nvidia-smi --query-gpu=name,driver_version --format=csv,noheader 2>/dev/null || true)
+      [[ $gpu == *GB10* ]] && echo "driver ${gpu##*, }" || fail "no NVIDIA GB10 (nvidia-smi: ${gpu:-none})"
+      busy=$(nvidia-smi --query-compute-apps=pid,process_name --format=csv,noheader 2>/dev/null || true)
+      [[ -z $busy ]] && echo "ok   gpu idle" || fail "GPU in use: $busy"
+      avail=$(awk "/MemAvailable/ {printf \"%d\", \$2/1048576}" /proc/meminfo)
+      (( avail >= 100 )) && echo "ok   MemAvailable ${avail} GiB" || fail "MemAvailable ${avail} GiB < 100"
+      for c in $(docker ps --format "{{.Names}}" 2>/dev/null); do
+        [[ " $ALLOWED " == *" $c "* ]] || fail "foreign container running: $c"
+      done
+      missing=0
+      while read -r size path; do
+        [[ $(stat -c %s "$MODEL_DIR/$path" 2>/dev/null) == "$size" ]] || missing=$((missing + 1))
+      done <<<"$FILES"
+      (( missing == 0 )) && echo "ok   pack: $(wc -l <<<"$FILES") files at full size under $MODEL_DIR (verify checks bytes)" \
+        || fail "pack: $missing files missing or short under $MODEL_DIR (./inkling2.sh fetch)"
+      for ip in $PEERS; do ping -c 1 -W 2 "$ip" >/dev/null || fail "fabric: $ip unreachable"; done
+      echo "ok   fabric: $PEERS reachable"
+      [[ $(sha256sum "$NCCL_LIB" 2>/dev/null | cut -d" " -f1) == "$NCCL_SHA256" ]] && echo "ok   nccl: $NCCL_LIB (pinned sha256)" \
+        || fail "nccl: $NCCL_LIB missing or not the pinned build (config/pins.sh NCCL_SHA256)"
+      if [[ -x $BASE_DIR/bin/rexl3-serve ]]; then
+        echo "engine $(cat "$BASE_DIR/bin/rexl3-serve.commit" 2>/dev/null) $(sha256sum "$BASE_DIR/bin/rexl3-serve" | cut -c1-12)"
+      else echo "engine none"; fi' \
+      MODEL_DIR="$MODEL_DIR" BASE_DIR="$BASE_DIR" ALLOWED="$ALLOWED_CONTAINERS" PEERS="${FABRIC[*]}" NCCL_LIB="$NCCL_LIB" NCCL_SHA256="$NCCL_SHA256" \
+      FILES="$(awk -F'\t' -v r="$r" '$1 == "*" || $1 == r {print $2, $3}' "$ROOT/$RANKS_FILE")" \
+      >"$tmp/$r" 2>&1 & pids+=($!)
+  done
+  wait_all "ssh to a rank failed"
+  out=$(for r in 0 1 2 3; do sed "s/^/[r$r] /" "$tmp/$r"; done); rm -rf "$tmp"
+  echo "$out"
+  grep -q '\] FAIL' <<<"$out" && bad=1
+  (( $(grep '\] driver ' <<<"$out" | awk '{print $3}' | sort -u | wc -l) == 1 )) || { echo "FAIL driver versions differ across ranks"; bad=1; }
+  (( $(grep '\] engine ' <<<"$out" | awk '{print $3, $4}' | sort -u | wc -l) == 1 )) || { echo "FAIL engine binaries differ across ranks (./inkling2.sh build)"; bad=1; }
+  grep -q "\] engine $REXL3_COMMIT " <<<"$out" || echo "note installed engine is not REXL3_COMMIT ${REXL3_COMMIT:0:12} (lab build or none)"
+  (( bad == 0 )) && log "doctor: all four ranks ready" || die "doctor found problems"
+}
+
+cmd_build() {
+  local rev=${1:-$REXL3_COMMIT} sha
+  sha=$(git -C "$REXL3_SRC" rev-parse --verify "$rev^{commit}" 2>/dev/null) || die "$rev is not a commit in $REXL3_SRC"
+  git -C "$REXL3_SRC" merge-base --is-ancestor "$REXL3_UPSTREAM_BASE" "$sha" \
+    || die "$sha does not descend from the upstream base ${REXL3_UPSTREAM_BASE:0:12}"
+  log "build engine ${sha:0:12} on rank 0 (${NODE[0]})"
+  git -C "$REXL3_SRC" archive --format=tar "$sha" | ssh "${SSH_OPTS[@]}" "$SSH_USER@${NODE[0]}" \
+    "rm -rf '$BASE_DIR/src.new' && mkdir -p '$BASE_DIR/src.new' && tar -x -C '$BASE_DIR/src.new'"
+  remote 0 '
+    pgrep -f "[r]exl3-serve" >/dev/null && { echo "FAIL rexl3-serve is running on rank 0: stop it first" >&2; exit 1; }
+    rm -rf "$BASE_DIR/src" && mv "$BASE_DIR/src.new" "$BASE_DIR/src" && mkdir -p "$BASE_DIR/bin" "$BASE_DIR/logs"
+    cd "$BASE_DIR/src"
+    export PATH=/usr/local/cuda/bin:$HOME/.cargo/bin:$PATH CUDA_HOME=/usr/local/cuda REXL3_CUDA_ARCH=sm_121 \
+      REXL3_COMMIT="$SHA" CARGO_TARGET_DIR="$BASE_DIR/target"
+    cargo +"$TOOLCHAIN" build --release --locked -p gb-server --bin rexl3-serve -p gb-cluster --bin rexl3-cluster \
+      > "$BASE_DIR/logs/build.log" 2>&1 \
+      || { grep -E "^error" -A6 "$BASE_DIR/logs/build.log" | head -60; echo "FAIL build (log: $BASE_DIR/logs/build.log)" >&2; exit 1; }
+    v=$("$BASE_DIR/target/release/rexl3-serve" --version 2>/dev/null)
+    grep -q "^commit *$SHA$" <<<"$v" || { echo "FAIL the built binary reports another commit:" >&2; echo "$v" >&2; exit 1; }
+    grep -Eq "^cuda_arch *sm_121$" <<<"$v" || { echo "FAIL the built binary is not sm_121:" >&2; echo "$v" >&2; exit 1; }
+    for b in rexl3-serve rexl3-cluster; do cp "$BASE_DIR/target/release/$b" "$BASE_DIR/bin/$b.new" && mv -f "$BASE_DIR/bin/$b.new" "$BASE_DIR/bin/$b"; done
+    echo "$SHA" > "$BASE_DIR/bin/rexl3-serve.commit"
+    echo "rank 0: built $(sha256sum "$BASE_DIR/bin/rexl3-serve" | cut -c1-12)"' \
+    BASE_DIR="$BASE_DIR" SHA="$sha" TOOLCHAIN="$RUST_TOOLCHAIN" || die "build failed on rank 0"
+  local r
+  for r in 1 2 3; do
+    remote 0 '
+      ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$USER@$IP" "pgrep -f \"[r]exl3-serve\" >/dev/null && exit 1; mkdir -p $BASE_DIR/bin $BASE_DIR/logs" \
+        || { echo "FAIL rexl3-serve is running on $IP: stop it first" >&2; exit 1; }
+      rsync -a "$BASE_DIR/bin/" "$USER@$IP:$BASE_DIR/bin/"' USER="$SSH_USER" IP="${FABRIC[$r]}" BASE_DIR="$BASE_DIR" & pids+=($!)
+  done
+  wait_all "shipping the engine failed"
+  local sums; sums=$(every 'echo "$(cat "$BASE_DIR/bin/rexl3-serve.commit") $(sha256sum "$BASE_DIR/bin/rexl3-serve" "$BASE_DIR/bin/rexl3-cluster" | cut -c1-64 | paste -sd" " -)"' BASE_DIR="$BASE_DIR") \
+    || die "could not read the installed binaries"
+  echo "$sums"
+  (( $(sed 's/^\[r.\] //' <<<"$sums" | sort -u | wc -l) == 1 )) || die "the four ranks hold different binaries"
+  log "build: engine ${sha:0:12} installed on all four ranks"
+}
+
 cmd_help() { sed -n '3,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; }
 
 case ${1:-help} in
+  doctor) cmd_doctor ;;
   fetch) cmd_fetch ;;
+  build) shift; cmd_build "$@" ;;
   verify) cmd_verify ;;
   files) shift; cmd_files "$@" ;;
   help|-h|--help) cmd_help ;;
