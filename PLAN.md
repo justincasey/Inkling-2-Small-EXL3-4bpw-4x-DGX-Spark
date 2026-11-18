@@ -32,8 +32,9 @@ gates, first boot recorded. Performance toward the targets is the next phase (au
 
 ## Open questions
 
-- 70 tok/s: DSpark acceptance (unmeasured) vs requantizing BF16 attention before the baseline (changes the pack).
-- REXL3 four-rank groups are built but unmeasured upstream (`docs/examples/cluster.4node.json`).
+- 70 tok/s: DSpark acceptance is 0.41 (3.8 tokens/round) on the gate prompts; requantizing BF16 attention before a
+  new baseline (changes the pack) remains the other lever. Decode is eager (no CUDA graphs) and unmeasured here.
+- Four-rank REXL3 groups now run on this switch (this recipe); upstream still lists R > 2 as unmeasured.
 - REXL3 refuses `json_schema` response formats; acceptable for the clients?
 - Pack identity under split staging: settled. The engine's fingerprint of a split-staged folder is the split form (config, every
   plain tensor, the index's tensor-to-shard manifest), the same on every rank: `sha256:71d760435893535f318c51038935514e4e93fe5d58507edebc78c3a75cda5079`
