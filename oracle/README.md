@@ -14,8 +14,9 @@ checked under.
 - TP4 rounding is emulated by default (`tp=4`):
   - rank r holds q heads `[12r, 12r+12)` and experts with E mod 4 == r;
   - each rank's partial is rounded to bf16, the partials are summed in rank order in fp32, and the sum is rounded to bf16.
-- Out of scope: the DSpark drafter and the vision tower. The oracle exports the drafter's 8 target features and
-  refuses image placeholder ids.
+- The DSpark drafter (`docs/PORT-SPEC.md` §4, `mtp.safetensors`) is covered by `dspark_ref.py`, under the same
+  numerics and TP rounding (see "DSpark drafter fixtures" below). Out of scope: the vision tower; the oracle refuses
+  image placeholder ids.
 
 ## Layout
 
@@ -27,12 +28,14 @@ checked under.
 | `pack.py` | pack folder as weight and expert sources: index-driven positional reads, EXL3 groups, optional worker pool |
 | `st.py` | minimal safetensors reader and writer |
 | `gen_fixtures.py` | fixture generator over a full pack folder |
+| `dspark_ref.py` | the DSpark drafter: `DSparkConfig`, context K/V commit (rollback by position), block forward, Markov head, fold |
+| `gen_dspark_fixtures.py` | drafter fixture generator over the pack's `mtp.safetensors` and the target fixtures' features |
 | `compare.py` | engine dump vs oracle fixture: metrics and pass/fail gates |
 | `prompts.jsonl` | default fixture prompts (chat-rendered and raw text, including one past the 1024 window) |
-| `synthetic.py` | tiny config, random weights and synthetic EXL3 packs for the tests |
+| `synthetic.py` | tiny configs (target and drafter), random weights, seeded drafter features and synthetic EXL3 packs for the tests |
 | `tools/verify_exl3_real.py` | fetches real expert groups by HTTP range, checks the numpy decode against gb-exl3, records weight and FFN stats |
 | `records/exl3-real-verify.json` | output of that check |
-| `tests/` | pytest suite; `tests/hf_transcription.py` is an independent float64 transcription of the HF eager model |
+| `tests/` | pytest suite; `tests/hf_transcription.py` is an independent float64 transcription of the HF eager model, `tests/vllm_dspark_transcription.py` one of the vLLM drafter module flow |
 
 ## Setup and tests (this Mac)
 
@@ -72,6 +75,17 @@ What the tests cover:
   - a missing expert file raises an error;
   - `gen_fixtures.py --verify-recompute` writes a fixture;
   - `compare.py` passes a clean dump and a noisy one, and fails a broken layer, naming it.
+- **Drafter** (`tests/test_dspark.py`, tiny drafter: H 64, 24/4 heads, window 6, block 8, 5 layers with layer 2 global):
+  - exact tp=1 == tp=4 to 1e-10; rounded tp=1 and tp=4 differ only by the rank-partial roundings;
+  - incremental commits == one commit, and rollback (overwrite from an earlier position) == fresh replay, bit for bit;
+  - local window: a ctx key at p − window − 1 is unread, one at p − window is read; the global layer reads position 0;
+  - the block is non-causal (the anchor row depends on `mask_embed`); a stale row at the anchor's position is unread;
+  - f_rnn comes from the last committed row; teacher forcing on the own drafts == free running;
+  - with rounding off it equals the independent transcription of the vLLM module flow (fused qkv, qk norm + RoPE,
+    position-indexed paged cache with the block's own K/V written over p .. p+7, `window = sliding + block`, Markov
+    context/step/gate, add_softcap) to 1e-9, at tp=1 and tp=4, through accept, overwrite and rollback steps;
+  - exact fold == unembed · hidden_out(latent); first-max argmax with NaN as −inf; the RoPE table's fp32 formula;
+  - `gen_dspark_fixtures.py` over a tiny pack writes every contract file with the contract's shapes.
 
 ## EXL3 dequantization
 
@@ -186,6 +200,32 @@ Resources:
   5. The fixtures copied back and recorded under `bench/records/<date>/` with the manifest.
 
   `--verify-recompute` doubles the cost and turns the run into its own cached == uncached check.
+
+## DSpark drafter fixtures
+
+`dspark_ref.py` is the float64 drafter reference of the shared drafter contract (PORT-SPEC §4, vLLM `@1448919f`; the
+rounding points are in `docs/NUMERICS.md`, "Drafter rounding points"). State per sequence: ctx K/V of every committed
+position (by absolute position, so a commit below the current length is a rollback) and the last committed feature
+row (the f_rnn source). `propose` runs the block at p = length and the Markov head; the fold of `hidden_out` into the
+unembed is computed once, streaming the unembed in row chunks.
+
+`gen_dspark_fixtures.py` takes the drafter features from the target fixtures above
+(`F[t] = stack(hidden[5, 11, …, 41], h_final)[t]`) and writes, per case `C`, `C_meta.json` and
+`C_{feats,tokens,anchors,drafts,hd,frnn,state,latent,logits,ctxkv}.npy` (bf16 as uint16 bits, logits float32). Cases:
+`real_raw-counting_tp4`, `real_chat-sky-effort0.9_tp4`, `real_raw-counting_tp1` (8 anchors each, prompt and generated
+region) and `long_tp4` (1100 seeded synthetic rows, anchors around the 1024 window). Run on .121 over the full pack
+copy, CPU only (needs `mtp.safetensors` and the target fixtures):
+
+```bash
+rsync -a --exclude .venv --exclude .cache --exclude exl3dq/target oracle/ spark@192.168.1.121:~/inkling2-oracle/
+ssh spark@192.168.1.121 'cd ~/inkling2-oracle && OMP_NUM_THREADS=8 nice -n 10 .venv/bin/python gen_dspark_fixtures.py \
+  --pack /home/spark/models/Inkling-2-Small-EXL3-4bpw-full --fixtures fixtures --out dspark_fixtures --threads 8'
+rsync -a spark@192.168.1.121:~/inkling2-oracle/dspark_fixtures/ spark@192.168.1.123:~/inkling2-dspark-fixtures/
+```
+
+The REXL3 GPU test reads the directory named by `REXL3_INKLING2_DSPARK_ORACLE`. The run prints, for the real cases,
+how many leading drafts match the target's next tokens. Each case's `seconds` is in its meta; the first run on .121
+(8 threads) took 87–132 s per case, 4–25 s per proposal, and 11 s for the mtp sha256 plus the fold.
 
 ## Tolerances
 

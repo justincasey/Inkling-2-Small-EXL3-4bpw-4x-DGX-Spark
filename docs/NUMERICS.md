@@ -65,7 +65,8 @@ Prefill + decode reproduces a full recompute bit for bit (`oracle/tests/test_mod
   - the block's K/V are written at `p .. p+7`, so the anchor's own ctx features are never visible;
   - the global draft layer (2) sees every ctx key `< p` plus the block.
 
-  The oracle does not implement the drafter yet. It exports the drafter's inputs (U13).
+  The oracle implements the drafter (`oracle/dspark_ref.py`) with exactly this window; its rounding points are listed
+  under "Drafter rounding points" below.
 - **U9: effort text.** The pack's `chat_template.jinja` is authoritative. It renders
   `Thinking effort level: ` followed by `0` when the effort is 0.0, else Jinja's `{{ num }}` (Python float repr: `0.1`,
   `0.2`, `0.7`, `0.9`, `0.99`). For the template's map values this equals V's `%g`. Fixtures pin token ids.
@@ -134,3 +135,20 @@ Prefill + decode reproduces a full recompute bit for bit (`oracle/tests/test_mod
 | `mlp_sconv` output | bf16 |
 | new P = `(P + a) + m` | fp32, then bf16 |
 | unembed z / soft-capped logits | fp32 / fp32 |
+
+## Drafter rounding points
+
+`oracle/dspark_ref.py` (PORT-SPEC §4, vLLM `@1448919f`). Everything else is float64 from the stored values.
+
+- `alpha = fp32(softmax(fuse_weight))`; feature mix + `dflare_norm`: bf16 (Σ in float64).
+- Context K/V: `k_raw`, `v` bf16; `k_norm_ctx` output bf16; RoPE output bf16.
+- RoPE table: `inv_freq = fp32(1 / fp32(θ^(2i/D)))`, angle `fp32(pos · inv_freq)`, `fp32(cos)`, `fp32(sin)`.
+- Block: `embed_norm(embed[anchor])` and `input_layernorm` (layer 0) bf16; q, k, v bf16; q/k norm bf16; RoPE bf16;
+  attention output bf16 (exact float64 softmax, non-causal over ctx window + block).
+- `o_proj` / `down_proj` rank partials bf16; rank-order fp32 sum; residual `bf16(h + sum)`; the following norm
+  (`post_attention_layernorm`, next `input_layernorm`, `norm`) reads that bf16 residual and is stored bf16.
+- MLP: g, u bf16; `silu(g) · u` bf16.
+- Markov head: `fold_W`, `fold_b` bf16; `ctx_i` fp32 (fp32 product, then + bias in fp32); base logits bf16; per step
+  `raw` fp32 (fp32 product, then + `ctx_i`); `bf16(raw)` → σ / tanh each bf16; `g·state`, `1 − g`, `(1 − g)·c` and
+  the new state bf16; `latent = bf16(tanh(o))`; bias bf16; `bf16(base + bias)`, then the softcapped logit bf16.
+- Draft: first maximum over `[0, 200058)`, NaN as −inf (U14).

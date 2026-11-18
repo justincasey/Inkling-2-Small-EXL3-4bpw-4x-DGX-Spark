@@ -1,6 +1,8 @@
 """Synthetic Inkling 2 models for tests: a tiny config with the real model's structure (6-layer AttnRes blocks, global
 layers at i % 6 == 5, GQA, windowed local attention, 4 short convs per layer, sigmoid top-k router, softcapped experts),
-random weights under the pack's tensor names, and random EXL3 expert groups written as a pack folder."""
+random weights under the pack's tensor names, and random EXL3 expert groups written as a pack folder; plus a tiny DSpark
+drafter (config, `mtp.safetensors`-named weights, seeded bf16 target features).
+"""
 
 from __future__ import annotations
 
@@ -12,6 +14,7 @@ import torch
 
 import exl3
 import st
+from dspark_ref import DSparkConfig
 from inkling2_ref import Inkling2Config
 
 
@@ -31,6 +34,67 @@ def tiny_config(**over) -> Inkling2Config:
 
 def _bf(x: torch.Tensor) -> torch.Tensor:
     return x.to(torch.bfloat16)
+
+
+def tiny_dspark_config(**over) -> DSparkConfig:
+    """A tiny drafter with the real structure: 5 layers, layer 2 global, GQA 6, window 6 (shorter than the tests'
+    contexts), block 8, 8 taps, padded vocab 97 with 90 valid ids. tp=4 divides the heads, kv heads and MLP width."""
+    base = dict(
+        hidden_size=64, num_layers=5, num_heads=24, num_kv_heads=4, head_dim=16, intermediate_size=128,
+        local_layer_ids=(0, 1, 3, 4), sliding_window=6, block_size=8, markov_rank=8, rope_theta=1e6, eps=1e-6,
+        target_layer_ids=(1, 2, 3, 4, 5, 6, 7, 8), vocab_size=97, valid_vocab=90, softcap=30.0,
+    )
+    base.update(over)
+    return DSparkConfig(**base)
+
+
+def random_dspark_weights(cfg: DSparkConfig, seed: int = 0) -> dict[str, torch.Tensor]:
+    """BF16 tensors under the unprefixed `mtp.safetensors` names plus the target's embed, embed_norm and unembed."""
+    g = torch.Generator().manual_seed(seed)
+    h, nh, nkv, d, inter, rk = (cfg.hidden_size, cfg.num_heads, cfg.num_kv_heads, cfg.head_dim, cfg.intermediate_size,
+                                cfg.markov_rank)
+    rn = lambda *s, std=1.0: _bf(torch.randn(*s, generator=g, dtype=torch.float64) * std)  # noqa: E731
+    near1 = lambda *s: _bf(1.0 + torch.randn(*s, generator=g, dtype=torch.float64) * 0.1)  # noqa: E731
+    s = h ** -0.5
+    w = {
+        "model.llm.embed.weight": rn(cfg.vocab_size, h),
+        "model.llm.embed_norm.weight": near1(h),
+        "model.llm.unembed.weight": rn(cfg.vocab_size, h, std=s * 4),
+        "fuse_weight": rn(cfg.num_layers + 1, cfg.n_taps),
+        "mask_embed": rn(h),
+        "norm.weight": near1(h),
+        "markov_head.dflare_norm.weight": near1(h),
+        "markov_head.markov_w1.weight": rn(cfg.vocab_size, rk),
+        "markov_head.rnn_proj.weight": rn(3 * rk, 2 * rk + 2 * h, std=2 * (2 * rk + 2 * h) ** -0.5),
+        "markov_head.rnn_proj.bias": rn(3 * rk, std=0.2),
+        "markov_head.hidden_out.weight": rn(h, rk, std=rk ** -0.5),
+        "markov_head.hidden_out.bias": rn(h, std=0.2),
+    }
+    for i in range(cfg.num_layers):
+        p = f"layers.{i}."
+        a = p + "self_attn."
+        for n in ("dflare_norm", "input_layernorm", "post_attention_layernorm"):
+            w[p + n + ".weight"] = near1(h)
+        for n in ("q_norm", "k_norm", "k_norm_ctx"):
+            w[a + n + ".weight"] = near1(d)
+        w[a + "q_proj.weight"] = rn(nh * d, h, std=s)
+        w[a + "k_proj.weight"] = rn(nkv * d, h, std=s)
+        w[a + "v_proj.weight"] = rn(nkv * d, h, std=s)
+        w[a + "k_proj_ctx.weight"] = rn(nkv * d, h, std=s)
+        w[a + "v_proj_ctx.weight"] = rn(nkv * d, h, std=s)
+        w[a + "o_proj.weight"] = rn(h, nh * d, std=(nh * d) ** -0.5)
+        w[p + "mlp.gate_proj.weight"] = rn(inter, h, std=s * 2)
+        w[p + "mlp.up_proj.weight"] = rn(inter, h, std=s * 2)
+        w[p + "mlp.down_proj.weight"] = rn(h, inter, std=inter ** -0.5)
+    return w
+
+
+def random_features(cfg: DSparkConfig, n: int, seed: int = 0, scales: tuple[float, ...] | None = None) -> torch.Tensor:
+    """Seeded bf16 drafter features [n, taps, H]: normal values scaled per tap."""
+    g = torch.Generator().manual_seed(seed)
+    scales = scales or (1.0,) * cfg.n_taps
+    x = torch.randn(n, cfg.n_taps, cfg.hidden_size, generator=g, dtype=torch.float64)
+    return _bf(x * torch.tensor(scales, dtype=torch.float64)[None, :, None])
 
 
 def random_weights(cfg: Inkling2Config, seed: int = 0, dense_experts: bool = True) -> dict[str, torch.Tensor]:
