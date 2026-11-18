@@ -1,0 +1,44 @@
+{
+ "meta": {
+  "tp": "1",
+  "pack_config_sha256": "5973623dbbab1fb8c8680707206b18d24369e16efae69c771df53a8ec72899e9",
+  "oracle_source_sha256": "6e7293ff0bf92bdb1d32fde973495cd44feb088b8e2d1092befdaceab656d785",
+  "numerics_version": "1",
+  "emulate": "engine"
+ },
+ "fixtures": {
+  "chat-sky-effort0.9": {
+   "sha256": "0a5225027da2e43da860d3f1ff6366245a78707b5ed2c44bedf44796b501a8ee",
+   "prompt_len": 26,
+   "generated": [
+    200001,
+    200008,
+    371,
+    150409,
+    171960,
+    149887,
+    150011,
+    156021,
+    181130,
+    151661,
+    158808,
+    149884,
+    152978,
+    152778,
+    13,
+    170289,
+    150893,
+    149911,
+    4123,
+    13,
+    170289,
+    151791,
+    154541,
+    31146
+   ],
+   "generated_text": "<|message_model|><|content_thinking|>The user asks for one sentence explaining why sky is usually blue. Need answer concise. Need ensure scientifically",
+   "seconds": 2081.2,
+   "verified_recompute": false
+  }
+ }
+}

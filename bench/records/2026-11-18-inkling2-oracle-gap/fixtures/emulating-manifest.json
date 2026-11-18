@@ -1,0 +1,94 @@
+{
+ "meta": {
+  "tp": "4",
+  "pack_config_sha256": "5973623dbbab1fb8c8680707206b18d24369e16efae69c771df53a8ec72899e9",
+  "oracle_source_sha256": "e113a7ec7f4bdbe94bd67358c4c38ff6dce339fd7b89396d4148fdb0ea5e0d36",
+  "numerics_version": "1",
+  "emulate": "engine"
+ },
+ "fixtures": {
+  "chat-capital-effort0": {
+   "sha256": "063b33064cb66ac39ded4e7d472de962548898cf3e3205e2b05516a0d6cdd59d",
+   "prompt_len": 25,
+   "generated": [
+    200001,
+    200004,
+    371,
+    151451,
+    149879,
+    151194,
+    149884,
+    152717,
+    13,
+    200010,
+    200006,
+    200001,
+    200004,
+    371,
+    150409,
+    152473
+   ],
+   "generated_text": "<|message_model|><|content_text|>The capital of France is Paris.<|end_message|><|content_model_end_sampling|><|message_model|><|content_text|>The user asked",
+   "seconds": 2142.9,
+   "verified_recompute": true
+  },
+  "chat-sky-effort0.9": {
+   "sha256": "b81e26fd9ba1e263c967cff88475ed58da6c7fc0b01be3ec42c0d0f9ef81370b",
+   "prompt_len": 26,
+   "generated": [
+    200001,
+    200008,
+    371,
+    150409,
+    171960,
+    149887,
+    150011,
+    156021,
+    181130,
+    151661,
+    158808,
+    149884,
+    152978,
+    152778,
+    13,
+    170289,
+    150893,
+    149911,
+    4123,
+    13,
+    170289,
+    151791,
+    154541,
+    31146
+   ],
+   "generated_text": "<|message_model|><|content_thinking|>The user asks for one sentence explaining why sky is usually blue. Need answer concise. Need ensure scientifically",
+   "seconds": 1423.2,
+   "verified_recompute": true
+  },
+  "raw-counting": {
+   "sha256": "a4b538321a129b25ba4ae4009bb6adb34f16ec0723390c727b48a1b4dc335885",
+   "prompt_len": 35,
+   "generated": [
+    220,
+    68079,
+    11,
+    220,
+    68084,
+    11,
+    220,
+    68063,
+    11,
+    220,
+    68080,
+    11,
+    220,
+    68107,
+    11,
+    220
+   ],
+   "generated_text": " 13, 14, 15, 16, 17, ",
+   "seconds": 906.9,
+   "verified_recompute": true
+  }
+ }
+}

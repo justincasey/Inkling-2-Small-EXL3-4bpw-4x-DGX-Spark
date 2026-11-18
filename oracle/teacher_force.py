@@ -266,7 +266,47 @@ def main(argv=None) -> int:
     finally:
         if pool is not None:
             pool.shutdown()
-    return 0
+    report["gate"] = gate(report["layers"])
+    with open(a.out, "w") as f:
+        json.dump(report, f, indent=1)
+    print(json.dumps(report["gate"], indent=1))
+    return 0 if report["gate"]["pass"] else 1
+
+
+# The correctness gate on identical inputs, against the EMULATING oracle (docs/ORACLE-GAP.md, "Gates"): limits about
+# 3x above the largest value measured on the four default fixtures (engine e91148a) and below what one missing
+# emulation costs (int8 KV: attention core 9e-3..1.4e-2 on global layers; fp16 experts: moe 2.0e-3).
+GATES = {
+    "core_rel_med_max": 2e-3,  # attention core of rank 0's heads, kv8 + bf16 P emulated: per-layer row median
+    "a_rel_med_max": 6e-3,  # attention sublayer output after attn_sconv
+    "mix_rel_max": 2e-3,  # MoE input, every row
+    "moe_rel_med_max": 1.5e-3,  # all-reduced MoE output, fp16 inputs emulated, the engine's picks
+    "router_logit_err_rel_sumabs_max": 1e-6,  # |logit error| / sum_k |x_k w_k|, every row and expert
+}
+
+
+def gate(layers: list[dict], variant: str = "kv8+attn_bf16_p", moe_variant: str = "moe_fp16") -> dict:
+    """Pass/fail of the op-level correctness gate over a report's layers (router flips must be within their bound;
+    the residual mismatches are reported)."""
+    g, bad = GATES, []
+    for x in layers:
+        i = x["layer"]
+        em = x["attn"][variant]
+        if em["core"]["rel_med"] > g["core_rel_med_max"]:
+            bad.append(f"layer {i}: attention core rel {em['core']['rel_med']:.2e}")
+        if em["a"]["rel_med"] > g["a_rel_med_max"]:
+            bad.append(f"layer {i}: attention output rel {em['a']['rel_med']:.2e}")
+        if x["mix"]["rel_max"] > g["mix_rel_max"]:
+            bad.append(f"layer {i}: mix rel {x['mix']['rel_max']:.2e}")
+        if "moe" in x and x["moe"][moe_variant]["rel_med"] > g["moe_rel_med_max"]:
+            bad.append(f"layer {i}: moe rel {x['moe'][moe_variant]['rel_med']:.2e}")
+        rt = x["router"]
+        if rt["logit_err_max_rel_sumabs"] > g["router_logit_err_rel_sumabs_max"] or not rt["engine_select_consistent"]:
+            bad.append(f"layer {i}: router logits or selection")
+        bad += [f"layer {i}: router flip at margin {f['oracle_margin']:.3g} > bound {f['score_err_bound']:.3g}"
+                for f in rt["flips"] if not f["within_bound"]]
+    return {"gates": g, "variant": variant, "failures": bad,
+            "residual_mismatch": sum(x["residual_mismatch"] for x in layers), "pass": not bad}
 
 
 if __name__ == "__main__":

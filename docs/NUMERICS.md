@@ -136,6 +136,22 @@ Prefill + decode reproduces a full recompute bit for bit (`oracle/tests/test_mod
 | new P = `(P + a) + m` | fp32, then bf16 |
 | unembed z / soft-capped logits | fp32 / fp32 |
 
+## Engine emulation (`Emulation`, `gen_fixtures.py --emulate`)
+
+The REXL3 port makes three deliberate lossy choices that differ from the rounding points above. The oracle can
+reproduce each one behind a flag; all flags are off by default, and a fixture records its setting as metadata
+`emulate` (`none`, `engine` for all three, or a comma list). `docs/ORACLE-GAP.md` measures what each one costs and
+which compare.py gate set applies to which fixture.
+
+| Flag | Engine choice | Emulation (float64 otherwise) |
+|---|---|---|
+| `kv8` | Global layers store K and V as int8 with a power-of-two scale per (token, KV head) (`nemotron_kv8.cuh`, `docs/DECISIONS.md`); every query, the writing step's own rows included, reads them back. Local rings stay bf16 | After k̂ / v̂ (bf16): `e` = the smallest exponent with `amax / 2^e ≤ 127` from amax's fp32 bits, clamped to [−24, 8]; `q = rint(x / 2^e)` (nearest even) saturated to ±127; the value read is `q · 2^e` |
+| `attn_bf16_p` | The attention kernel (`inkling2_attn.cu`) rounds the probabilities to bf16 for P·V | Keys in absolute chunks (512 global, 256 local) of absolute 64-key tiles. Per chunk, an online softmax over its tiles in ascending order in the exp2 domain: `m' = max(m, tile max)`, `p = 2^(t − m')`, `l = l·2^(m − m') + Σp` (unrounded), `o = o·2^(m − m') + bf16(p)·V`. Chunk states folded left in ascending order; `out = bf16(o/l · σ(gate) · σ(lse − sink))` |
+| `moe_fp16` | The EXL3 expert kernels store each GEMM input, the rotated `(x ⊙ suh) H_K` and the rotated `(act ⊙ suh_d) H`, as fp16 (`moe_experts.cu`, `moe_prefill.cu`). g, u, act and the expert output are rounded as above (fp32, fp32, bf16, unrounded) | The rotated input is rounded to fp32, then to fp16 (nearest even), before the W_q product (U11) |
+
+Everything else the engine does is fp32 with its own fixed summation order. The oracle does not emulate that order;
+`oracle/teacher_force.py` measures it as a noise floor instead (oracle against a second fp32 implementation of itself).
+
 ## Drafter rounding points
 
 `oracle/dspark_ref.py` (PORT-SPEC §4, vLLM `@1448919f`). Everything else is float64 from the stored values.

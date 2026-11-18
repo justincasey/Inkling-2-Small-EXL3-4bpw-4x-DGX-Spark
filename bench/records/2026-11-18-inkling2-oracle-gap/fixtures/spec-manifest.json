@@ -1,0 +1,110 @@
+{
+ "meta": {
+  "tp": "4",
+  "pack_config_sha256": "5973623dbbab1fb8c8680707206b18d24369e16efae69c771df53a8ec72899e9",
+  "oracle_source_sha256": "328ca7dd4b8bf2e1053df89fc89544a9eb042b55562c7612f0151f3bbc1aabb2",
+  "numerics_version": "1"
+ },
+ "fixtures": {
+  "chat-capital-effort0": {
+   "sha256": "b6c69eb47ac14f0d24ad2cec7b40aeae99efd160943e5c6afe4bdb3c4f8d6099",
+   "prompt_len": 25,
+   "generated": [
+    200001,
+    200004,
+    371,
+    151451,
+    149879,
+    151194,
+    149884,
+    152717,
+    13,
+    200010,
+    200006,
+    200001,
+    200004,
+    371,
+    150409,
+    152473
+   ],
+   "generated_text": "<|message_model|><|content_text|>The capital of France is Paris.<|end_message|><|content_model_end_sampling|><|message_model|><|content_text|>The user asked",
+   "seconds": 997.4,
+   "verified_recompute": true
+  },
+  "chat-sky-effort0.9": {
+   "sha256": "0247c58d5ef37c51eacdaa97fb05e22040c8c62288d383117cc7ddd70ff0b384",
+   "prompt_len": 26,
+   "generated": [
+    200001,
+    200008,
+    371,
+    150409,
+    171960,
+    149887,
+    150011,
+    156021,
+    181130,
+    151661,
+    158808,
+    149884,
+    152978,
+    152778,
+    13,
+    170289,
+    150893,
+    149911,
+    4123,
+    13,
+    170289,
+    151791,
+    154541,
+    31146
+   ],
+   "generated_text": "<|message_model|><|content_thinking|>The user asks for one sentence explaining why sky is usually blue. Need answer concise. Need ensure scientifically",
+   "seconds": 1272.1,
+   "verified_recompute": true
+  },
+  "raw-counting": {
+   "sha256": "cb0028eeb4e11f8afe81b3c24666a625312c1bc17ba32c2abfc07d0f86510ccb",
+   "prompt_len": 35,
+   "generated": [
+    220,
+    68079,
+    11,
+    220,
+    68084,
+    11,
+    220,
+    68063,
+    11,
+    220,
+    68080,
+    11,
+    220,
+    68107,
+    11,
+    220
+   ],
+   "generated_text": " 13, 14, 15, 16, 17, ",
+   "seconds": 801.3,
+   "verified_recompute": true
+  },
+  "raw-long-window": {
+   "sha256": "a869a12000bb2f8049b1433393a230acb2f460ad5abda72c712495ec420c1633",
+   "prompt_len": 1119,
+   "generated": [
+    220,
+    95788,
+    220,
+    94234,
+    220,
+    98238,
+    220,
+    98912
+   ],
+   "generated_text": " 561 562 563 564",
+   "seconds": 4317.0,
+   "verified_recompute": false
+  }
+ }
+}

@@ -1,0 +1,113 @@
+| fixture | rows | sublayer | layers | spec oracle | + bf16 P | + int8 KV | emulating (both) | noise floor |
+|---|---|---|---|---|---|---|---|---|
+| chat-capital-effort0 | 40 | attention core (rank 0) | local 40 | 1.35e-03 | 1.75e-04 | 1.35e-03 | 1.75e-04 | 7.55e-04 |
+| chat-capital-effort0 | 40 | attention core (rank 0) | global 8 | 1.36e-02 | 1.36e-02 | 1.36e-03 | 1.12e-04 | 5.73e-04 |
+| chat-capital-effort0 | 40 | attention a | local 40 | 2.54e-03 | 1.08e-03 | 2.54e-03 | 1.08e-03 | 2.04e-03 |
+| chat-capital-effort0 | 40 | attention a | global 8 | 1.25e-02 | 1.25e-02 | 2.58e-03 | 1.14e-03 | 2.04e-03 |
+| chat-sky-effort0.9 | 49 | attention core (rank 0) | local 40 | 1.34e-03 | 1.80e-04 | 1.34e-03 | 1.80e-04 | 7.37e-04 |
+| chat-sky-effort0.9 | 49 | attention core (rank 0) | global 8 | 1.32e-02 | 1.32e-02 | 1.44e-03 | 5.91e-05 | 7.23e-04 |
+| chat-sky-effort0.9 | 49 | attention a | local 40 | 2.52e-03 | 1.13e-03 | 2.52e-03 | 1.13e-03 | 2.13e-03 |
+| chat-sky-effort0.9 | 49 | attention a | global 8 | 1.12e-02 | 1.12e-02 | 2.53e-03 | 1.06e-03 | 2.00e-03 |
+| raw-counting.no-moe | 50 | attention core (rank 0) | local 40 | 1.26e-03 | 2.28e-04 | 1.26e-03 | 2.28e-04 | 2.65e-04 |
+| raw-counting.no-moe | 50 | attention core (rank 0) | global 8 | 1.37e-02 | 1.38e-02 | 1.20e-03 | 2.36e-04 | 8.95e-04 |
+| raw-counting.no-moe | 50 | attention a | local 40 | 2.46e-03 | 1.22e-03 | 2.46e-03 | 1.22e-03 | 1.39e-03 |
+| raw-counting.no-moe | 50 | attention a | global 8 | 1.19e-02 | 1.19e-02 | 2.66e-03 | 1.57e-03 | 2.38e-03 |
+| raw-long-window.no-moe | 1126 | attention core (rank 0) | local 40 | 9.07e-04 | 3.27e-04 | 9.07e-04 | 3.27e-04 | 3.44e-04 |
+| raw-long-window.no-moe | 1126 | attention core (rank 0) | global 8 | 9.08e-03 | 9.09e-03 | 9.68e-04 | 3.35e-04 | 9.87e-04 |
+| raw-long-window.no-moe | 1126 | attention a | local 40 | 2.06e-03 | 1.24e-03 | 2.06e-03 | 1.24e-03 | 1.33e-03 |
+| raw-long-window.no-moe | 1126 | attention a | global 8 | 8.30e-03 | 8.31e-03 | 2.35e-03 | 1.54e-03 | 2.26e-03 |
+
+[
+ {
+  "fixture": "chat-capital-effort0",
+  "rows": 40,
+  "layers": 48,
+  "router_row_layers": 1920,
+  "router_identical_min": 1.0,
+  "router_flips": 0,
+  "router_flips_out_of_bound": 0,
+  "router_select_consistent": true,
+  "router_margin_min": 3.6836644387583384e-07,
+  "router_logit_err_max": 7.62939453125e-06,
+  "router_logit_err_rel_sumabs_max": 3.213223511986854e-07,
+  "router_weights_err_max": 9.5367431640625e-07,
+  "mix_rel_med": 0.0,
+  "mix_rel_max": 0.00038072358915740317,
+  "mix_diff_frac_max": 0.00018446180555555555,
+  "mix_noise_rel_max": 0.0003588573212770008,
+  "residual_mismatch_total": 2,
+  "residual_elements": 8847360,
+  "moe_rel_med_spec": 0.0020371009733346755,
+  "moe_rel_med_fp16": 0.0007747791334114531,
+  "moe_rel_med_noise": 0.00033781508758270334,
+  "moe_rel_max_fp16": 0.002231005168016837,
+  "moe_rel_max_noise": 0.0022066012257951845,
+  "moe_cos_min_fp16": 0.9999975520725667
+ },
+ {
+  "fixture": "chat-sky-effort0.9",
+  "rows": 49,
+  "layers": 48,
+  "router_row_layers": 2352,
+  "router_identical_min": 1.0,
+  "router_flips": 0,
+  "router_flips_out_of_bound": 0,
+  "router_select_consistent": true,
+  "router_margin_min": 9.893226293744561e-08,
+  "router_logit_err_max": 7.62939453125e-06,
+  "router_logit_err_rel_sumabs_max": 3.213223511986854e-07,
+  "router_weights_err_max": 9.5367431640625e-07,
+  "mix_rel_med": 0.0,
+  "mix_rel_max": 0.00026810582642694465,
+  "mix_diff_frac_max": 0.00018601190476190475,
+  "mix_noise_rel_max": 0.0002637396538565628,
+  "residual_mismatch_total": 2,
+  "residual_elements": 10838016,
+  "moe_rel_med_spec": 0.0020046580110148686,
+  "moe_rel_med_fp16": 0.0007615494918773703,
+  "moe_rel_med_noise": 0.0003326811039326899,
+  "moe_rel_max_fp16": 0.00356505589011379,
+  "moe_rel_max_noise": 0.0012959376726365995,
+  "moe_cos_min_fp16": 0.9999937756196187
+ },
+ {
+  "fixture": "raw-counting.no-moe",
+  "rows": 50,
+  "layers": 48,
+  "router_row_layers": 2400,
+  "router_identical_min": 1.0,
+  "router_flips": 0,
+  "router_flips_out_of_bound": 0,
+  "router_select_consistent": true,
+  "router_margin_min": 6.38838371976036e-06,
+  "router_logit_err_max": 7.62939453125e-06,
+  "router_logit_err_rel_sumabs_max": 3.1957545355765545e-07,
+  "router_weights_err_max": 9.5367431640625e-07,
+  "mix_rel_med": 0.0,
+  "mix_rel_max": 0.00024188257183602665,
+  "mix_diff_frac_max": 0.00016493055555555556,
+  "mix_noise_rel_max": 0.0002598922645631102,
+  "residual_mismatch_total": 3,
+  "residual_elements": 11059200
+ },
+ {
+  "fixture": "raw-long-window.no-moe",
+  "rows": 1126,
+  "layers": 48,
+  "router_row_layers": 54048,
+  "router_identical_min": 1.0,
+  "router_flips": 0,
+  "router_flips_out_of_bound": 0,
+  "router_select_consistent": true,
+  "router_margin_min": 1.2693072287683904e-09,
+  "router_logit_err_max": 7.62939453125e-06,
+  "router_logit_err_rel_sumabs_max": 3.1957545355765545e-07,
+  "router_weights_err_max": 9.5367431640625e-07,
+  "mix_rel_med": 0.0,
+  "mix_rel_max": 0.0004968036341002145,
+  "mix_diff_frac_max": 0.00014743838809946715,
+  "mix_noise_rel_max": 0.0004967839541517932,
+  "residual_mismatch_total": 98,
+  "residual_elements": 249053184
+ }
+]

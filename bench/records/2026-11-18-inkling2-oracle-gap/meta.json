@@ -1,0 +1,66 @@
+{
+ "name": "inkling2-oracle-gap",
+ "date": "2026-11-18",
+ "conclusion": "docs/ORACLE-GAP.md",
+ "recipe": {
+  "oracle_commit": "8fdd60f (emulation, teacher_force, merge_dump planes, worker watchdog) + this record's commit (gates)"
+ },
+ "pack": {
+  "repo": "0xSero/Inkling-2-Small-EXL3-4bpw",
+  "revision": "996dc404c1feb3abd5330af8a3c52270ffe0008d",
+  "dir": "/home/spark/models/Inkling-2-Small-EXL3-4bpw"
+ },
+ "engine": {
+  "repo": "/Users/justin/projects/REXL3",
+  "branch": "inkling2-gap",
+  "commit": "e91148a14959e5ee4d0122d5c63ed7d6a691065c",
+  "change": "dump-only: REXL3_INKLING2_DUMP_OPS sub-op planes; forward identical to 0f0d9fe (dump byte-identical to the base record's boot B)",
+  "rexl3_serve_sha256": "2d888cdb5cc0d9ff08f8b24fd96e2a8f0b4dd162d5186d773d5c74922ba205d8",
+  "lab_build": true
+ },
+ "nccl": {
+  "lib": "/home/spark/rexl3/lib/libnccl.so.2",
+  "sha256": "fc7ea66334edbc934aa25959b9907dbb2b91a1d2485beff18839afc45cbc08d0",
+  "env": [
+   "NCCL_SOCKET_IFNAME=enp1s0f1np1",
+   "NCCL_IB_HCA==rocep1s0f1:1,roceP2p1s0f1:1",
+   "NCCL_IB_GID_INDEX=3",
+   "NCCL_IB_TC=106",
+   "NCCL_MAX_NCHANNELS=4",
+   "NCCL_NET=IB",
+   "NCCL_IB_DISABLE=0",
+   "NCCL_IB_ADDR_FAMILY=AF_INET",
+   "NCCL_IB_ROCE_VERSION_NUM=2",
+   "NCCL_NET_PLUGIN=none",
+   "NCCL_DEBUG=WARN"
+  ]
+ },
+ "boot": {
+  "command": "DUMP_DIR=/home/spark/inkling2-dump-ops EXTRA_ENV=REXL3_INKLING2_DUMP_OPS=1 EXTRA_FLAGS='--kv-tokens 262144' ./inkling2.sh start",
+  "plan_line": "slots=4 max_context=1048576 kv_pages=1028 kv_tokens=262144 kv_gib=1.01 weights_gib=73.04 kv_dtype=int8",
+  "boot_s": 90,
+  "ranks": "same print-serve lines as the base record plus REXL3_INKLING2_DUMP=/home/spark/inkling2-dump-ops REXL3_INKLING2_DUMP_OPS=1 and --kv-tokens 262144; PREFILL_CHUNK 4096"
+ },
+ "commands": {
+  "greedy": [
+   "INKLING2_URL=http://127.0.0.1:8000 python3 bench/tools/greedy.py --fixtures ~/inkling2-oracle/fixtures --teacher-force --out greedy-ops.json",
+   "INKLING2_URL=http://127.0.0.1:8000 python3 bench/tools/greedy.py --fixtures longstub --teacher-force --out greedy-ops-long.json  (longstub: raw-long-window prompt before its oracle fixture existed; tokens compared to the fixture afterwards: equal)"
+  ],
+  "merge": "python3 bench/tools/merge_dump.py --dump dumpOps --fixture FIX/NAME.safetensors --greedy greedy-ops.json --out engops/NAME.safetensors",
+  "teacher_force_oracle_host": "OMP_NUM_THREADS=4 nice -n 5 python teacher_force.py --pack /home/spark/models/Inkling-2-Small-EXL3-4bpw-full --engine engops/NAME.safetensors --out tf/NAME.json --workers 6 --threads 4  (chat fixtures, with experts; source = 8fdd60f minus lint renames and the gate function, computed afterwards into teacher-forced/gate.json)",
+  "teacher_force_mac": "python teacher_force.py --pack <non-expert files of the pack> --engine engops/NAME.safetensors --out NAME.no-moe.json --no-moe --threads 8  (raw fixtures)",
+  "fixtures_spec": "~/inkling2-oracle/fixtures (base record; raw-long-window finished 2026-11-17 21:04 CST, 1119 + 8 tokens)",
+  "fixtures_emulating": "gen_fixtures.py --pack FULL --out fixtures-engine --workers 6 --threads 4 --emulate engine --verify-recompute --only raw-counting chat-sky-effort0.9 chat-capital-effort0",
+  "fixtures_emulating_tp1": "gen_fixtures.py --pack FULL --out fixtures-engine-tp1-NAME --workers 6 --threads 3 --emulate engine --tp 1 --only NAME  (chat fixtures)",
+  "compare": "python oracle/compare.py ORACLE.safetensors ENGINE.safetensors --json compare/<pair>/NAME.json  (gate set from the oracle fixture's emulate)",
+  "summary": "python3 summarize_tf.py teacher-forced/*.json > teacher-forced/summary.txt"
+ },
+ "results": [
+  "teacher-forced/*.json (per layer, per op; gate.json = the op-level correctness gate)",
+  "compare/engine-vs-spec",
+  "compare/engine-vs-emulating",
+  "compare/oracle-vs-oracle (spec vs emulating, emulating tp4 vs tp1)",
+  "fixtures/*-manifest.json (sha256 and generated tokens; the fixtures stay on the oracle host ~/inkling2-gap/)",
+  "greedy-ops*.json"
+ ]
+}

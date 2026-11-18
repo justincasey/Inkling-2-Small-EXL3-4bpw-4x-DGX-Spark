@@ -1,0 +1,78 @@
+{
+ "chat-capital-effort0.json": {
+  "emulating": {
+   "gates": {
+    "core_rel_med_max": 0.002,
+    "a_rel_med_max": 0.006,
+    "mix_rel_max": 0.002,
+    "moe_rel_med_max": 0.0015,
+    "router_logit_err_rel_sumabs_max": 1e-06
+   },
+   "variant": "kv8+attn_bf16_p",
+   "failures": [],
+   "residual_mismatch": 2,
+   "pass": true
+  },
+  "spec_failures": 62,
+  "without_kv8_failures": 15,
+  "without_bf16_p_failures": 0,
+  "without_fp16_failures": 47
+ },
+ "chat-sky-effort0.9.json": {
+  "emulating": {
+   "gates": {
+    "core_rel_med_max": 0.002,
+    "a_rel_med_max": 0.006,
+    "mix_rel_max": 0.002,
+    "moe_rel_med_max": 0.0015,
+    "router_logit_err_rel_sumabs_max": 1e-06
+   },
+   "variant": "kv8+attn_bf16_p",
+   "failures": [],
+   "residual_mismatch": 2,
+   "pass": true
+  },
+  "spec_failures": 63,
+  "without_kv8_failures": 15,
+  "without_bf16_p_failures": 0,
+  "without_fp16_failures": 48
+ },
+ "raw-counting.no-moe.json": {
+  "emulating": {
+   "gates": {
+    "core_rel_med_max": 0.002,
+    "a_rel_med_max": 0.006,
+    "mix_rel_max": 0.002,
+    "moe_rel_med_max": 0.0015,
+    "router_logit_err_rel_sumabs_max": 1e-06
+   },
+   "variant": "kv8+attn_bf16_p",
+   "failures": [],
+   "residual_mismatch": 3,
+   "pass": true
+  },
+  "spec_failures": 16,
+  "without_kv8_failures": 16,
+  "without_bf16_p_failures": 1,
+  "without_fp16_failures": null
+ },
+ "raw-long-window.no-moe.json": {
+  "emulating": {
+   "gates": {
+    "core_rel_med_max": 0.002,
+    "a_rel_med_max": 0.006,
+    "mix_rel_max": 0.002,
+    "moe_rel_med_max": 0.0015,
+    "router_logit_err_rel_sumabs_max": 1e-06
+   },
+   "variant": "kv8+attn_bf16_p",
+   "failures": [],
+   "residual_mismatch": 98,
+   "pass": true
+  },
+  "spec_failures": 16,
+  "without_kv8_failures": 16,
+  "without_bf16_p_failures": 0,
+  "without_fp16_failures": null
+ }
+}

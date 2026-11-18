@@ -161,3 +161,12 @@ def test_compare_token_divergence_rules():
     assert rep["checks"]["logits"]["positions"] == 3
     e2 = {"tokens": torch.tensor([1, 2, 9, 9, 9]), "logits": logits.clone()}
     assert not compare.compare(o, e2, 2)["pass"]
+
+
+def test_gate_set_follows_the_fixture_emulation():
+    assert compare.gates_for("engine") is compare.GATES_ENGINE and compare.gates_for("none") is compare.GATES_SPEC
+    with pytest.raises(ValueError, match="no gate set"):
+        compare.gates_for("kv8,moe_fp16")
+    # the correctness gate is never looser than the drift gate
+    e, s = compare.GATES_ENGINE, compare.GATES_SPEC
+    assert e["kl_mean_max"] < s["kl_mean_max"] and e["top1_agree_min"] > s["top1_agree_min"]

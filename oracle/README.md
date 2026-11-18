@@ -30,7 +30,8 @@ checked under.
 | `gen_fixtures.py` | fixture generator over a full pack folder |
 | `dspark_ref.py` | the DSpark drafter: `DSparkConfig`, context K/V commit (rollback by position), block forward, Markov head, fold |
 | `gen_dspark_fixtures.py` | drafter fixture generator over the pack's `mtp.safetensors` and the target fixtures' features |
-| `compare.py` | engine dump vs oracle fixture: metrics and pass/fail gates |
+| `compare.py` | engine dump vs oracle fixture: free-running metrics and the drift gates (gate set by the fixture's `emulate`) |
+| `teacher_force.py` | engine sub-op dump vs the oracle fed the engine's own inputs, op by op: the correctness gate (`docs/ORACLE-GAP.md`) |
 | `prompts.jsonl` | default fixture prompts (chat-rendered and raw text, including one past the 1024 window) |
 | `synthetic.py` | tiny configs (target and drafter), random weights, seeded drafter features and synthetic EXL3 packs for the tests |
 | `tools/verify_exl3_real.py` | fetches real expert groups by HTTP range, checks the numpy decode against gb-exl3, records weight and FFN stats |
@@ -229,18 +230,18 @@ how many leading drafts match the target's next tokens. Each case's `seconds` is
 
 ## Tolerances
 
-`python oracle/compare.py ORACLE.safetensors ENGINE.safetensors [--json report.json]`: the engine dump uses the
-fixture layout; `hidden`, `h_final` and `router_*` are optional. The command exits 1 when a gate fails.
+`docs/ORACLE-GAP.md` explains the engine-vs-oracle gap and defines the gates in force; this is the summary.
 
-| Check | Gate | Why |
-|---|---|---|
-| Generated tokens | identical, or the first difference falls where the oracle's top-1 − top-2 < 0.05 (an excused tie) | greedy decoding is discrete; a near-tie may flip under fp32 vs float64 accumulation |
-| Logits (positions before any divergence) | KL(oracle ‖ engine) mean ≤ 1e-3 and max ≤ 1e-2 nats; top-1 agreement ≥ 99%; no top-1 disagreement where the margin ≥ 0.05 | bf16 activations and the engine's fp16 EXL3 intermediates move logits by small amounts; a real bug moves them by orders of magnitude more |
-| `hidden` (every layer, every token) | cosine ≥ 0.999 | per-op error is bf16-level (tests); 0.999 is about 4.5 % relative error, room for accumulation over 48 layers but not for a wrong op. The report names the worst layer |
-| `h_final` | cosine ≥ 0.999 | same |
-| Router | informative: identical-set fraction, slot overlap, largest margin at which a flip happened | a flip at a margin near 0 is rounding; a flip at a wide margin points to the router or its input |
-
-These gates are provisional. Tighten them once the first engine-vs-oracle comparison is recorded under
-`bench/records/`, and quote no measured agreement before that. The byte-exact targets (drafted == serial,
-cached == uncached, concurrent == solo, chunk-width invariance) are engine-vs-pinned-engine checks; this oracle
-anchors correctness, not bit equality.
+- **Emulation.** `gen_fixtures.py --emulate engine` reproduces the engine's three lossy choices (int8 KV of the global
+  layers, bf16 P in attention, fp16 expert GEMM inputs; `docs/NUMERICS.md`, "Engine emulation"). The fixture records it
+  as metadata `emulate`. Keep each emulation in its own output directory.
+- **Correctness: `teacher_force.py`** on a dump of a boot with `REXL3_INKLING2_DUMP_OPS=1` (merged by
+  `bench/tools/merge_dump.py`), against the emulating oracle: every op fed the engine's inputs, per-layer limits on the
+  attention core and output, the mix, the MoE output and the router logits, the engine's picks equal to the oracle's
+  except within their fp32 bound (`teacher_force.GATES`). Exit 1 on failure.
+- **Drift: `compare.py ORACLE ENGINE [--json report.json] [--gates engine|none]`** on a free-running fixture: tokens,
+  KL, top-1, hidden and h_final cosines, routing overlap (informative). Gate set `engine` (emulating oracle) keeps the
+  original per-token numbers; `none` (spec oracle) holds measured limits (KL mean ≤ 2.5e-2, top-1 ≥ 0.95, per-layer
+  median hidden cosine ≥ 0.95, h_final median ≥ 0.99). This model amplifies any ~1e-3 difference through routing
+  flips: the emulating oracle at tp = 1 fails the `engine` set against itself at tp = 4, so the drift gates measure and
+  the teacher-forced gate decides.

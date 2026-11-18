@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import inkling_api as ia  # noqa: E402
 import stlite  # noqa: E402
 
-TIE_MARGIN = 0.05  # oracle/compare.py GATES["tie_margin"]
+TIE_MARGIN = 0.05  # oracle/compare.py GATES_ENGINE["tie_margin"] (the correctness gate's)
 
 
 def margin_at(path: str, row: int) -> tuple[float, int, int] | None:

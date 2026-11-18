@@ -1,0 +1,54 @@
+{
+ "url": "http://127.0.0.1:8000",
+ "model": "inkling-2-small-exl3-4bpw-4x-dgx-spark",
+ "date": "2026-11-18T03:00:40Z",
+ "fixtures": {
+  "raw-long-window": {
+   "prompt_len": 1119,
+   "generated": 8,
+   "equal": false,
+   "first_divergence": 0,
+   "mismatch_positions": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ],
+   "requests": 1,
+   "seconds": 3.167,
+   "engine_generated": [
+    220,
+    95788,
+    220,
+    94234,
+    220,
+    98238,
+    220,
+    98912
+   ],
+   "oracle_generated": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "oracle_token": 0,
+   "engine_token": 220,
+   "oracle_margin": null,
+   "oracle_top2": null,
+   "excused_tie": false,
+   "pass": false,
+   "teacher_forced_rows": 1126,
+   "teacher_force_seconds": 2.891
+  }
+ },
+ "pass": false
+}
