@@ -23,13 +23,17 @@
 #   start          preflight (the doctor's gates, plus an installed engine), then ranks 3, 2, 1 and 0 detached, each
 #                  under its memory guard (scripts/memguard.sh); waits up to READY_TIMEOUT_S for /health (200: engine ready) on rank 0
 #                  while watching every rank for `level=fatal` or death (then stops all and prints the log tails);
-#                  prints the capacity line and boot_s. DUMP_DIR, EXTRA_FLAGS and EXTRA_ENV reach every rank alike
+#                  prints the capacity line and boot_s. DUMP_DIR, EXTRA_FLAGS and EXTRA_ENV reach every rank alike, and so do
+#                  SPEC (--spec), PREFIX_CACHE (--prefix-cache / --prefix-cache-mib), VISION (off: --no-vision) and
+#                  MEMORY_FLOOR_GIB (REXL3_MEMORY_FLOOR_GIB)
 #   stop           rank 0 first, then ranks 1-3 (SIGTERM, STOP_GRACE_S, SIGKILL), then the guards; checks the GPUs idle
 #   status         per rank: pid, uptime, guard, MemAvailable now and the guard's minimum, GPU, last log line;
 #                  rank 0's /v1/models
 #   logs [RANK] [N]
 #                  last N (default 40) lines of a rank's log, every rank if RANK is omitted or `all`
-#   smoke          one chat and one raw completion against rank 0 (bench/tools/smoke.py); fails on non-200 or empty
+#   smoke          against rank 0 (bench/tools/smoke.py): a chat, a raw completion, a tool call, reasoning separation
+#                  (effort high and none) and, unless VISION=off, a synthetic image; fails on non-200, an empty reply or a
+#                  failed check; prints each check's usage (usage.spec drafted/accepted/rounds)
 #   memwatch begin|report
 #                  begin: open a measurement window on every guard; report: per rank MemAvailable minimum in the
 #                  window, while loading, once ready, overall (the guards' records)
@@ -79,6 +83,10 @@ source "$ROOT/config/pins.sh"
 : "${EXTRA_ENV:=}"                                                              # more KEY=VALUE words, every rank alike
 : "${DUMP_DIR:=}"                                                               # absolute: REXL3_INKLING2_DUMP on every rank
 : "${READY_TIMEOUT_S:=1800}"                                                    # start: wait this long for /health
+: "${SPEC:=dspark}"                                                             # --spec: none|copy|dspark|auto
+: "${PREFIX_CACHE:=on}"                                                         # --prefix-cache on|off, auto (no flag) or MiB
+: "${VISION:=on}"                                                               # off: --no-vision
+: "${MEMORY_FLOOR_GIB:=}"                                                       # REXL3_MEMORY_FLOOR_GIB on every rank (empty: 8)
 : "${STOP_GRACE_S:=60}"                                                         # stop: SIGTERM, then SIGKILL after this
 : "${MIN_AVAIL_GIB:=100}"                                                       # doctor/start: MemAvailable before a boot
 : "${GUARD_START_MIB:=2048}"                                                    # guard floor while the pack loads
@@ -102,6 +110,13 @@ for _k in $EXTRA_ENV; do
 done
 unset _k
 MODEL_DIR=$MODELS_DIR/$MODEL_NAME
+[[ $SPEC =~ ^(none|copy|dspark|auto)$ ]] || { echo "SPEC is none, copy, dspark or auto (got '$SPEC')" >&2; exit 1; }
+[[ $PREFIX_CACHE =~ ^(on|off|auto|[0-9]+)$ ]] \
+  || { echo "PREFIX_CACHE is on, off, auto or a whole number of MiB (got '$PREFIX_CACHE')" >&2; exit 1; }
+[[ $VISION =~ ^(on|off)$ ]] || { echo "VISION is on or off (got '$VISION')" >&2; exit 1; }
+if [[ -n $MEMORY_FLOOR_GIB ]] && ! { [[ $MEMORY_FLOOR_GIB =~ ^[0-9]+(\.[0-9]+)?$ ]] && awk -v v="$MEMORY_FLOOR_GIB" 'BEGIN {exit !(v >= 0.25)}'; }; then
+  echo "MEMORY_FLOOR_GIB is empty (engine default 8) or a number of GiB >= 0.25 (got '$MEMORY_FLOOR_GIB')" >&2; exit 1
+fi
 BIN=$BASE_DIR/bin/rexl3-serve
 API=http://${NODE[0]}:$PORT
 # One ssh connection per node, reused by the start/status polling loops.
@@ -312,7 +327,9 @@ cmd_build() {
 # serve_cmd RANK: the one command line RANK runs, environment included. `env -i`: nothing from the ssh session reaches
 # the rank, so its NCCL_* set is exactly config/pins.sh NCCL_ENV (+ EXTRA_ENV) on every rank. print-serve prints this
 # string and start hands this very string to the rank. Flags are identical on every rank but --tp-rank; rank 0 alone
-# serves HTTP, the followers take the same --host/--port (contract with the engine).
+# serves HTTP, the followers take the same --host/--port (contract with the engine). Vision: rank 0 alone loads the tower
+# and encodes images, a follower never loads one (rexl3-serve builds a follower without a vision slot, whatever the flag)
+# and receives the image rows from rank 0; so VISION=off adds --no-vision to every rank alike and VISION=on to none.
 serve_cmd() {
   local r=$1 w
   local -a extra_env extra_flags env args
@@ -322,11 +339,17 @@ serve_cmd() {
     PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     "${NCCL_ENV[@]}" REXL3_NCCL_LIB="$NCCL_LIB" RUST_BACKTRACE=1)
   [[ -z $DUMP_DIR ]] || env+=(REXL3_INKLING2_DUMP="$DUMP_DIR")
+  [[ -z $MEMORY_FLOOR_GIB ]] || env+=(REXL3_MEMORY_FLOOR_GIB="$MEMORY_FLOOR_GIB")
   env+=("${extra_env[@]}")
   args=(--model "$MODEL_DIR" --tp-ranks 4 --tp-rank "$r" --tp-peer "${FABRIC[0]}:$TP_PORT"
-    --max-model-len "$MAX_MODEL_LEN" --slots "$SLOTS" --prefill-chunk "$PREFILL_CHUNK" --kv-dtype int8 --spec none
-    --no-vision --allow-unvalidated-pack --served-model-name "$SERVED_NAME" --host 0.0.0.0 --port "$PORT"
-    "${extra_flags[@]}")
+    --max-model-len "$MAX_MODEL_LEN" --slots "$SLOTS" --prefill-chunk "$PREFILL_CHUNK" --kv-dtype int8 --spec "$SPEC")
+  case $PREFIX_CACHE in
+    on|off) args+=(--prefix-cache "$PREFIX_CACHE") ;;
+    auto) ;;   # the engine's default: on when the KV plan leaves memory spare
+    *) args+=(--prefix-cache-mib "$PREFIX_CACHE") ;;
+  esac
+  [[ $VISION == on ]] || args+=(--no-vision)
+  args+=(--allow-unvalidated-pack --served-model-name "$SERVED_NAME" --host 0.0.0.0 --port "$PORT" "${extra_flags[@]}")
   printf 'exec env -i'
   for w in "${env[@]}" "$BIN" "${args[@]}"; do printf ' %q' "$w"; done
   printf '\n'
@@ -338,6 +361,9 @@ cmd_print_serve() {
   for r in "${ranks[@]}"; do
     printf '# rank %s  %s@%s  rail-0 %s' "$r" "$SSH_USER" "${NODE[$r]}" "${FABRIC[$r]}"
     (( r == 0 )) && printf '  TP rendezvous %s:%s, HTTP :%s' "${FABRIC[0]}" "$TP_PORT" "$PORT"
+    if [[ $VISION == on ]]; then
+      (( r == 0 )) && printf '  vision tower here' || printf '  no vision tower (rank 0 encodes; same flags)'
+    fi
     printf '\n'
     serve_cmd "$r"
   done
@@ -535,7 +561,11 @@ cmd_logs() {
   done
 }
 
-cmd_smoke() { API_KEY="$API_KEY" python3 "$ROOT/bench/tools/smoke.py" --url "$API" --model "$SERVED_NAME"; }
+# smoke: VISION=off boots skip the image check (the server refuses image parts without a tower)
+cmd_smoke() {
+  local -a skip=(); [[ $VISION == on ]] || skip=(--skip-image)
+  API_KEY="$API_KEY" python3 "$ROOT/bench/tools/smoke.py" --url "$API" --model "$SERVED_NAME" "${skip[@]}"
+}
 
 # memwatch begin: a new window token on every rank (each guard restarts its window minimum when it sees it);
 # memwatch report: every guard's record. Guards run only while their rank runs; the record stays after.
@@ -577,7 +607,8 @@ cmd_record() {
   REC_DIRTY="$(git -C "$ROOT" status --porcelain 2>/dev/null | grep -c . || true)" \
   REC_MODEL_REPO="$MODEL_REPO" REC_MODEL_REV="$MODEL_REV" REC_MODEL_DIR="$MODEL_DIR" REC_PINNED="$REXL3_COMMIT" \
   REC_UPSTREAM_BASE="$REXL3_UPSTREAM_BASE" REC_NCCL_LIB="$NCCL_LIB" REC_NCCL_SHA="$NCCL_SHA256" \
-  REC_CONFIG="$(for k in PROFILE SERVED_NAME PORT TP_PORT MAX_MODEL_LEN SLOTS PREFILL_CHUNK EXTRA_FLAGS EXTRA_ENV DUMP_DIR \
+  REC_CONFIG="$(for k in PROFILE SERVED_NAME PORT TP_PORT MAX_MODEL_LEN SLOTS PREFILL_CHUNK SPEC PREFIX_CACHE VISION MEMORY_FLOOR_GIB \
+    EXTRA_FLAGS EXTRA_ENV DUMP_DIR \
     GUARD_START_MIB GUARD_MIB GUARD_SWAP_MAX_MIB GUARD_SWAP_AVAIL_MIB DROP_CACHES_EVERY_S; do printf '%s=%s\n' "$k" "${!k:-}"; done)" \
   python3 - <<'PY' || die "could not write the record"
 import json, os, re

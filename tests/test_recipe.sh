@@ -4,13 +4,16 @@
 # Static checks of the recipe: no ssh, no GPU, nothing on the nodes. Run before any hardware run (AGENTS.md).
 #   - bash -n on every shell script
 #   - print-serve: four rank commands with the engine contract's flags, identical but for --tp-rank, an identical
-#     environment (every NCCL_* variable included) on every rank, and DUMP_DIR / EXTRA_ENV / EXTRA_FLAGS on every rank
+#     environment (every NCCL_* variable included) on every rank, and DUMP_DIR / EXTRA_ENV / EXTRA_FLAGS on every rank;
+#     SPEC / PREFIX_CACHE / VISION / MEMORY_FLOOR_GIB map to their flags (or variable) on every rank, defaults included,
+#     and bad values are refused
 #   - start runs exactly what print-serve prints (one builder, serve_cmd)
 #   - the usage header lists every command of the dispatcher
 #   - python tools compile and answer --help
 #   - the memory guard's logic on a fake /proc/meminfo: kill on a low floor, kill on swap growth, minimum records and
 #     the memwatch window, refusal of a broken configuration
 #   - merge_dump.py on synthetic dumps (tests/test_merge_dump.py; with oracle/.venv also through oracle/compare.py)
+#   - gates.py / synth_images.py pure parts: PNG writer decodes back, record diffs, usage parsing (tests/test_gates.py)
 set -uo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT" || exit 1
@@ -27,11 +30,15 @@ done
 # ── print-serve: the engine contract ──
 # The caller's environment beats .env: pin the tunables to their contract defaults so a local .env cannot hide a bug.
 serve_env=(MAX_MODEL_LEN=1048576 SLOTS=4 PREFILL_CHUNK=4096 TP_PORT=29571 EXTRA_FLAGS= EXTRA_ENV= DUMP_DIR=
+  SPEC=dspark PREFIX_CACHE=on VISION=on MEMORY_FLOOR_GIB=
   NODES="192.168.1.121 192.168.1.122 192.168.1.123 192.168.1.18" FABRIC_ADDRS="10.100.10.1 10.100.10.2 10.100.10.3 10.100.10.4")
-check_serve() {   # check_serve LABEL WANT_ENV WANT_FLAGS PRINT_SERVE_OUTPUT
+# check_serve LABEL WANT_ENV WANT_FLAGS PRINT_SERVE_OUTPUT WANT_SERVE; WANT_SERVE: "spec=S prefix=on|off|auto|MiB
+# vision=on|off floor=GiB-or-empty"
+check_serve() {
   SERVE_TEXT=$4 python3 - "$@" <<'PY'
 import os, shlex, sys
 label, want_env, want_flags = sys.argv[1], sys.argv[2], sys.argv[3]
+want = dict(kv.split("=", 1) for kv in sys.argv[5].split())
 text = os.environ["SERVE_TEXT"]
 lines = [l for l in text.splitlines() if l and not l.startswith("#")]
 heads = [l for l in text.splitlines() if l.startswith("# rank ")]
@@ -57,11 +64,22 @@ for r, line in enumerate(lines):
     if val("--tp-rank") != str(r):
         errs.append(f"rank {r}: --tp-rank {val('--tp-rank')}")
     for flag, v in [("--tp-ranks", "4"), ("--tp-peer", "10.100.10.1:29571"), ("--max-model-len", "1048576"),
-                    ("--slots", "4"), ("--prefill-chunk", "4096"), ("--kv-dtype", "int8"), ("--spec", "none"),
+                    ("--slots", "4"), ("--prefill-chunk", "4096"), ("--kv-dtype", "int8"), ("--spec", want["spec"]),
                     ("--host", "0.0.0.0")]:
         if val(flag) != v:
             errs.append(f"rank {r}: {flag} {val(flag)!r}, contract {v!r}")
-    for flag in ("--no-vision", "--allow-unvalidated-pack"):
+    if args.count("--spec") != 1:
+        errs.append(f"rank {r}: --spec given {args.count('--spec')} times")
+    p = want["prefix"]
+    got = (val("--prefix-cache"), val("--prefix-cache-mib"))
+    exp = {"on": ("on", None), "off": ("off", None), "auto": (None, None)}.get(p, (None, p))
+    if got != exp:
+        errs.append(f"rank {r}: PREFIX_CACHE={p}: (--prefix-cache, --prefix-cache-mib) {got}, want {exp}")
+    if ("--no-vision" in args) != (want["vision"] == "off"):
+        errs.append(f"rank {r}: VISION={want['vision']}, --no-vision {'present' if '--no-vision' in args else 'absent'}")
+    if env.get("REXL3_MEMORY_FLOOR_GIB") != (want["floor"] or None):
+        errs.append(f"rank {r}: REXL3_MEMORY_FLOOR_GIB={env.get('REXL3_MEMORY_FLOOR_GIB')!r}, want {want['floor'] or None!r}")
+    for flag in ("--allow-unvalidated-pack",):
         if flag not in args:
             errs.append(f"rank {r}: {flag} missing")
     for flag in ("--model", "--served-model-name", "--port"):
@@ -87,17 +105,28 @@ if argvs and any(strip(a) != strip(argvs[0]) for a in argvs):
 for e in errs:
     print(f"FAIL print-serve ({label}): {e}")
 if not errs:
-    print(f"ok   print-serve ({label}): 4 ranks, contract flags, identical env ({len(nccl)} NCCL_* variables)")
+    print(f"ok   print-serve ({label}): 4 ranks, contract flags, {sys.argv[5]}, identical env ({len(nccl)} NCCL_* variables)")
 sys.exit(1 if errs else 0)
 PY
 }
 base_env="NCCL_SOCKET_IFNAME=enp1s0f1np1 NCCL_IB_GID_INDEX=3 NCCL_IB_TC=106 NCCL_MAX_NCHANNELS=4 REXL3_NCCL_LIB=/home/spark/rexl3/lib/libnccl.so.2"
 out=$(env "${serve_env[@]}" "$BASH_BIN" ./inkling2.sh print-serve 2>&1) || bad "print-serve exited non-zero: $out"
-check_serve defaults "$base_env" "" "$out" || fails=$((fails + 1))
+check_serve defaults "$base_env" "" "$out" "spec=dspark prefix=on vision=on floor=" || fails=$((fails + 1))
+grep -q '^# rank 0 .*vision tower here' <<<"$out" && [[ $(grep -c '^# rank [123] .*no vision tower (rank 0 encodes; same flags)' <<<"$out") == 3 ]] \
+  && ok "print-serve says rank 0 alone holds the vision tower" || bad "print-serve does not say where the vision tower is"
 out=$(env "${serve_env[@]}" DUMP_DIR=/home/spark/inkling2-dump EXTRA_ENV="REXL3_TEST_A=1 REXL3_TEST_B=x" \
   EXTRA_FLAGS="--kv-tokens 65536" "$BASH_BIN" ./inkling2.sh print-serve 2>&1) || bad "print-serve with passthrough exited non-zero: $out"
 check_serve passthrough "$base_env REXL3_INKLING2_DUMP=/home/spark/inkling2-dump REXL3_TEST_A=1 REXL3_TEST_B=x" \
-  "--kv-tokens 65536" "$out" || fails=$((fails + 1))
+  "--kv-tokens 65536" "$out" "spec=dspark prefix=on vision=on floor=" || fails=$((fails + 1))
+out=$(env "${serve_env[@]}" SPEC=none PREFIX_CACHE=2048 VISION=off MEMORY_FLOOR_GIB=6.5 "$BASH_BIN" ./inkling2.sh print-serve 2>&1) \
+  || bad "print-serve (serial, MiB cache, no vision, floor) exited non-zero: $out"
+check_serve "serial, MiB cache, no vision, floor" "$base_env REXL3_MEMORY_FLOOR_GIB=6.5" "" "$out" \
+  "spec=none prefix=2048 vision=off floor=6.5" || fails=$((fails + 1))
+grep -q 'vision tower' <<<"$out" && bad "print-serve names a vision tower with VISION=off" || ok "VISION=off: print-serve names no vision tower"
+out=$(env "${serve_env[@]}" SPEC=copy PREFIX_CACHE=off "$BASH_BIN" ./inkling2.sh print-serve 2>&1) || bad "print-serve (copy, off) exited non-zero: $out"
+check_serve "copy, cache off" "$base_env" "" "$out" "spec=copy prefix=off vision=on floor=" || fails=$((fails + 1))
+out=$(env "${serve_env[@]}" SPEC=auto PREFIX_CACHE=auto "$BASH_BIN" ./inkling2.sh print-serve 2>&1) || bad "print-serve (auto, auto) exited non-zero: $out"
+check_serve "auto, cache auto" "$base_env" "" "$out" "spec=auto prefix=auto vision=on floor=" || fails=$((fails + 1))
 for r in 0 1 2 3; do
   one=$(env "${serve_env[@]}" "$BASH_BIN" ./inkling2.sh print-serve "$r" | grep -v '^#')
   [[ $one == "$(grep -v '^#' <<<"$(env "${serve_env[@]}" "$BASH_BIN" ./inkling2.sh print-serve)" | sed -n "$((r + 1))p")" ]] \
@@ -105,6 +134,19 @@ for r in 0 1 2 3; do
 done
 if env DUMP_DIR=relative/dir "$BASH_BIN" ./inkling2.sh print-serve >/dev/null 2>&1; then bad "a relative DUMP_DIR was accepted"; else ok "a relative DUMP_DIR is refused"; fi
 if env EXTRA_ENV="notakeyvalue" "$BASH_BIN" ./inkling2.sh print-serve >/dev/null 2>&1; then bad "EXTRA_ENV without KEY= was accepted"; else ok "EXTRA_ENV without KEY= is refused"; fi
+# (an empty value is the default, as for every key: `${KEY:=default}`)
+for kv in SPEC=mtp SPEC=DSpark PREFIX_CACHE=pool PREFIX_CACHE=1.5 VISION=yes MEMORY_FLOOR_GIB=0.1 \
+  MEMORY_FLOOR_GIB=abc MEMORY_FLOOR_GIB=-2 MEMORY_FLOOR_GIB=8GiB; do
+  if env "${serve_env[@]}" "$kv" "$BASH_BIN" ./inkling2.sh print-serve >/dev/null 2>&1; then bad "$kv was accepted"; else ok "$kv is refused"; fi
+done
+# the defaults a fresh checkout boots with (the caller's environment and .env aside) and .env.example's values
+for kv in SPEC:dspark PREFIX_CACHE:on VISION:on MEMORY_FLOOR_GIB:; do
+  k=${kv%%:*} v=${kv#*:}
+  grep -q "^: \"\${$k:=$v}\"" inkling2.sh && ok "inkling2.sh defaults $k to '$v'" || bad "inkling2.sh does not default $k to '$v'"
+  grep -Eq "^$k=$v( |$)" .env.example && ok ".env.example sets $k=$v" || bad ".env.example does not set $k=$v"
+done
+grep -q 'skip=(); \[\[ $VISION == on \]\] || skip=(--skip-image)' inkling2.sh \
+  && ok "smoke skips the image check exactly when VISION=off" || bad "smoke does not follow VISION"
 # start must hand the rank the print-serve string itself
 if grep -q 'CMD="$(serve_cmd "$r")"' inkling2.sh && grep -q '^    serve_cmd "$r"$' inkling2.sh \
   && grep -q 'setsid nohup bash -c "exec 9>>/tmp/rexl3-gpu.lock; flock -x -n 9 .*; $CMD"' inkling2.sh; then
@@ -119,8 +161,8 @@ for c in $cmds; do
   [[ $c == *"|"* ]] && continue   # help|-h|--help
   if grep -Eq "^  $c( |$)" <<<"$helptext"; then ok "usage lists $c"; else bad "usage header does not list '$c'"; fi
 done
-for k in TP_PORT MAX_MODEL_LEN SLOTS PREFILL_CHUNK EXTRA_FLAGS EXTRA_ENV DUMP_DIR READY_TIMEOUT_S STOP_GRACE_S MIN_AVAIL_GIB \
-  GUARD_START_MIB GUARD_MIB GUARD_SWAP_MAX_MIB DROP_CACHES_EVERY_S; do
+for k in TP_PORT MAX_MODEL_LEN SLOTS PREFILL_CHUNK SPEC PREFIX_CACHE VISION MEMORY_FLOOR_GIB EXTRA_FLAGS EXTRA_ENV DUMP_DIR \
+  READY_TIMEOUT_S STOP_GRACE_S MIN_AVAIL_GIB GUARD_START_MIB GUARD_MIB GUARD_SWAP_MAX_MIB DROP_CACHES_EVERY_S; do
   grep -Eq "^#? ?$k=" .env.example && ok ".env.example documents $k" || bad ".env.example lacks $k"
 done
 
@@ -191,6 +233,9 @@ else ok "guard refuses to start when it cannot drop the page cache"; fi
 # ── merge_dump ──
 cmp=(); [[ -x oracle/.venv/bin/python ]] && cmp=(--compare-python oracle/.venv/bin/python)
 if res=$(python3 tests/test_merge_dump.py "${cmp[@]}" 2>&1); then grep '^ok' <<<"$res"; else echo "$res"; bad "tests/test_merge_dump.py"; fi
+
+# ── gates / smoke helpers ──
+if res=$(python3 tests/test_gates.py 2>&1); then grep '^ok' <<<"$res"; else echo "$res"; bad "tests/test_gates.py"; fi
 
 echo
 if (( fails == 0 )); then echo "test_recipe: all checks passed"; else echo "test_recipe: $fails check(s) failed"; exit 1; fi

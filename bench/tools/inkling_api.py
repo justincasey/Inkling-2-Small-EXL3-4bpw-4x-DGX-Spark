@@ -129,6 +129,19 @@ class Api:
                 "return_token_ids": True, **extra}
         return self.post("/v1/completions", body)
 
+    def chat(self, messages: list, max_tokens: int, **extra) -> tuple[dict, float]:
+        """A greedy chat completion with the generated token ids (`choices[0].token_ids`)."""
+        body = {"model": self.model, "messages": messages, "max_tokens": max_tokens, "temperature": 0,
+                "return_token_ids": True, **extra}
+        return self.post("/v1/chat/completions", body)
+
+    def metrics(self) -> dict[str, float]:
+        """/metrics as {sample name with its labels: value} (Prometheus text format)."""
+        status, out, _ = self.call("GET", "/metrics", timeout=30)
+        if status != 200 or not isinstance(out, str):
+            raise ApiError(status, out, "/metrics")
+        return parse_metrics(out)
+
     def prompt_logprobs(self, prompt_ids: list[int], k: int) -> tuple[list, float]:
         out, dt = self.post("/v1/completions", {"model": self.model, "prompt": prompt_ids, "prompt_logprobs": k,
                                                 "temperature": 0})
@@ -149,6 +162,44 @@ def generated_ids(resp: dict) -> tuple[list[int], str]:
     if finish == "stop" and (not ids or ids[-1] != EOS):
         ids.append(EOS)
     return ids, finish
+
+
+# The Inkling 2 reply framing (special tokens; crates/server/src/formats/inkling2.rs): the server reads it and takes it out,
+# so neither `content` nor `reasoning_content` may hold one of these.
+FRAMING = ("<|message_model|>", "<|content_thinking|>", "<|content_text|>", "<|end_message|>",
+           "<|content_invoke_tool_json|>", "<|content_invoke_tool_text|>", "<|content_model_end_sampling|>")
+
+
+def spec_counters(usage: dict | None) -> dict | None:
+    """usage.spec (drafted, accepted, rounds) with the derived acceptance rate (accepted / drafted) and the tokens per
+    round (completion tokens / rounds); None when the server reported no spec block."""
+    s = (usage or {}).get("spec")
+    if not isinstance(s, dict):
+        return None
+    d, a, r = int(s.get("drafted", 0)), int(s.get("accepted", 0)), int(s.get("rounds", 0))
+    n = int((usage or {}).get("completion_tokens", 0))
+    return {"drafted": d, "accepted": a, "rounds": r, "acceptance": round(a / d, 4) if d else None,
+            "tokens_per_round": round(n / r, 4) if r else None}
+
+
+def cached_tokens(usage: dict | None) -> int | None:
+    """usage.prompt_tokens_details.cached_tokens: prompt tokens a prefix-cache hit supplied (None: not reported)."""
+    v = ((usage or {}).get("prompt_tokens_details") or {}).get("cached_tokens")
+    return None if v is None else int(v)
+
+
+def parse_metrics(text: str) -> dict[str, float]:
+    out = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, _, value = line.rpartition(" ")
+        try:
+            out[name] = float(value)
+        except ValueError:
+            continue
+    return out
 
 
 def greedy(api: Api, prompt: list[int], n: int) -> tuple[list[int], int, float]:
