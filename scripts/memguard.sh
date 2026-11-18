@@ -4,7 +4,9 @@
 # memguard.sh: one rank's memory guard, run on the node beside rexl3-serve (`./inkling2.sh start` ships it to
 # BASE_DIR/run/memguard.sh and starts it before the rank). It waits for the rank's pid file, then samples MemAvailable
 # and swap every GUARD_SAMPLE_S seconds and SIGKILLs the rank (and its children) when MemAvailable stays below the floor
-# for 3 consecutive samples, or when swap use grows more than GUARD_SWAP_MAX_MIB above what it was at arming: on GB10 the
+# for 3 consecutive samples, or when swap use grows more than GUARD_SWAP_MAX_MIB above what it was at arming while MemAvailable
+# is under GUARD_SWAP_AVAIL_MIB (the node swapping under pressure; with tens of GiB available the kernel only pages out other
+# processes' cold memory, which is not this rank's doing): on GB10 the
 # GPU and the host share one memory pool, and a node that starts swapping takes sshd down with it instead of failing a
 # request. The reason goes to GUARD_LOG and, as a `level=fatal` line, to the rank's own log. The guard exits when the rank
 # is gone.
@@ -21,7 +23,7 @@
 # Variables (by name; no positional arguments):
 #   GUARD_PIDFILE GUARD_RANK GUARD_LOG GUARD_MIN_FILE GUARD_STAGE_FILE GUARD_WINDOW_FILE GUARD_SERVE_LOG
 #   GUARD_START_MIB GUARD_MIB GUARD_SWAP_MAX_MIB DROP_CACHES_EVERY_S
-#   optional: GUARD_SAMPLE_S (0.5) GUARD_REPORT_S (60) GUARD_ARM_TIMEOUT_S (60) MEMINFO (/proc/meminfo, for tests)
+#   optional: GUARD_SWAP_AVAIL_MIB (16384) GUARD_SAMPLE_S (0.5) GUARD_REPORT_S (60) GUARD_ARM_TIMEOUT_S (60) MEMINFO (/proc/meminfo, for tests)
 #             GUARD_DROP_CMD (sudo -n sh -c 'sync; echo 1 > /proc/sys/vm/drop_caches')
 set -uo pipefail
 
@@ -34,6 +36,8 @@ for v in GUARD_START_MIB GUARD_MIB GUARD_SWAP_MAX_MIB DROP_CACHES_EVERY_S; do
 done
 (( GUARD_MIB > 0 && GUARD_START_MIB > 0 )) || { echo "memguard: a floor of 0 MiB guards nothing" >&2; exit 2; }
 meminfo=${MEMINFO:-/proc/meminfo}
+swap_avail=${GUARD_SWAP_AVAIL_MIB:-16384}
+[[ $swap_avail =~ ^[0-9]+$ ]] || { echo "memguard: GUARD_SWAP_AVAIL_MIB=$swap_avail is not a whole number" >&2; exit 2; }
 sample_s=${GUARD_SAMPLE_S:-0.5}
 report_s=${GUARD_REPORT_S:-60}
 arm_timeout_s=${GUARD_ARM_TIMEOUT_S:-60}
@@ -63,7 +67,7 @@ done
 [[ -n $pid ]] || { say "FAIL no pid in $GUARD_PIDFILE after ${arm_timeout_s}s"; exit 1; }
 kill -0 "$pid" 2>/dev/null || { say "FAIL pid $pid is not running"; exit 1; }
 started=$(now)
-say "armed pid=$pid floor_loading=${GUARD_START_MIB}MiB floor_ready=${GUARD_MIB}MiB swap_base=${swap_base}MiB swap_max_growth=${GUARD_SWAP_MAX_MIB}MiB drop_every=${DROP_CACHES_EVERY_S}s sample=${sample_s}s"
+say "armed pid=$pid floor_loading=${GUARD_START_MIB}MiB floor_ready=${GUARD_MIB}MiB swap_base=${swap_base}MiB swap_max_growth=${GUARD_SWAP_MAX_MIB}MiB swap_avail_below=${swap_avail}MiB drop_every=${DROP_CACHES_EVERY_S}s sample=${sample_s}s"
 
 min=-1 min_at='' min_loading=-1 min_ready=-1 window='' window_min=-1 window_at='' low=0
 last_drop=$SECONDS last_report=$SECONDS
@@ -94,8 +98,8 @@ while kill -0 "$pid" 2>/dev/null; do
   printf 'rank=%s\npid=%s\nstarted=%s\nupdated=%s\nstage=%s\nnow_mib=%s\nmin_mib=%s\nmin_at=%s\nloading_min_mib=%s\nready_min_mib=%s\nwindow=%s\nwindow_min_mib=%s\nwindow_min_at=%s\nswap_base_mib=%s\nswap_now_mib=%s\nfloor_mib=%s\n' \
     "$GUARD_RANK" "$pid" "$started" "$t" "$stage" "$avail" "$min" "$min_at" "$min_loading" "$min_ready" "$window" \
     "$window_min" "$window_at" "$swap_base" "$swap" "$floor" > "$GUARD_MIN_FILE"
-  if (( swap - swap_base > GUARD_SWAP_MAX_MIB )); then
-    kill_rank "swap grew $((swap - swap_base)) MiB > ${GUARD_SWAP_MAX_MIB} MiB (MemAvailable ${avail} MiB)"; break
+  if (( swap - swap_base > GUARD_SWAP_MAX_MIB && avail < swap_avail )); then
+    kill_rank "swap grew $((swap - swap_base)) MiB > ${GUARD_SWAP_MAX_MIB} MiB with MemAvailable ${avail} MiB < ${swap_avail} MiB"; break
   fi
   if (( avail < floor )); then low=$((low + 1)); else low=0; fi
   if (( low >= 3 )); then

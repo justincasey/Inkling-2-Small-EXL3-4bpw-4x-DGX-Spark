@@ -107,7 +107,8 @@ if env DUMP_DIR=relative/dir "$BASH_BIN" ./inkling2.sh print-serve >/dev/null 2>
 if env EXTRA_ENV="notakeyvalue" "$BASH_BIN" ./inkling2.sh print-serve >/dev/null 2>&1; then bad "EXTRA_ENV without KEY= was accepted"; else ok "EXTRA_ENV without KEY= is refused"; fi
 # start must hand the rank the print-serve string itself
 if grep -q 'CMD="$(serve_cmd "$r")"' inkling2.sh && grep -q '^    serve_cmd "$r"$' inkling2.sh \
-  && grep -q 'setsid nohup bash -c "$CMD"' inkling2.sh; then ok "start and print-serve share serve_cmd"
+  && grep -q 'setsid nohup bash -c "exec 9>>/tmp/rexl3-gpu.lock; flock -x -n 9 .*; $CMD"' inkling2.sh; then
+  ok "start and print-serve share serve_cmd (run under the exclusive GPU lock)"
 else bad "start does not run the serve_cmd string print-serve prints"; fi
 
 # ── usage header lists every command ──

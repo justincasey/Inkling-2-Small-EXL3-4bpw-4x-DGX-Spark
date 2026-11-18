@@ -21,7 +21,7 @@
 #   print-serve [RANK]
 #                  print the exact command line (environment included) each rank runs; `start` runs exactly this
 #   start          preflight (the doctor's gates, plus an installed engine), then ranks 3, 2, 1 and 0 detached, each
-#                  under its memory guard (scripts/memguard.sh); waits up to READY_TIMEOUT_S for /v1/models on rank 0
+#                  under its memory guard (scripts/memguard.sh); waits up to READY_TIMEOUT_S for /health (200: engine ready) on rank 0
 #                  while watching every rank for `level=fatal` or death (then stops all and prints the log tails);
 #                  prints the capacity line and boot_s. DUMP_DIR, EXTRA_FLAGS and EXTRA_ENV reach every rank alike
 #   stop           rank 0 first, then ranks 1-3 (SIGTERM, STOP_GRACE_S, SIGKILL), then the guards; checks the GPUs idle
@@ -78,12 +78,13 @@ source "$ROOT/config/pins.sh"
 : "${EXTRA_FLAGS:=}"                                                            # more rexl3-serve flags, every rank alike
 : "${EXTRA_ENV:=}"                                                              # more KEY=VALUE words, every rank alike
 : "${DUMP_DIR:=}"                                                               # absolute: REXL3_INKLING2_DUMP on every rank
-: "${READY_TIMEOUT_S:=1800}"                                                    # start: wait this long for /v1/models
+: "${READY_TIMEOUT_S:=1800}"                                                    # start: wait this long for /health
 : "${STOP_GRACE_S:=60}"                                                         # stop: SIGTERM, then SIGKILL after this
 : "${MIN_AVAIL_GIB:=100}"                                                       # doctor/start: MemAvailable before a boot
 : "${GUARD_START_MIB:=2048}"                                                    # guard floor while the pack loads
 : "${GUARD_MIB:=1024}"                                                          # guard floor once ready
-: "${GUARD_SWAP_MAX_MIB:=64}"                                                   # guard: swap growth that kills the rank
+: "${GUARD_SWAP_MAX_MIB:=64}"                                                   # guard: swap growth that kills the rank...
+: "${GUARD_SWAP_AVAIL_MIB:=16384}"                                              # ...while MemAvailable is under this
 : "${DROP_CACHES_EVERY_S:=20}"                                                  # guard: page-cache drop while loading
 RANKS_FILE=config/pack-ranks.tsv
 
@@ -92,7 +93,7 @@ read -r -a FABRIC <<<"$FABRIC_ADDRS"
 (( ${#NODE[@]} == 4 )) || { echo "NODES must list exactly four management addresses (got ${#NODE[@]})" >&2; exit 1; }
 (( ${#FABRIC[@]} == 4 )) || { echo "FABRIC_ADDRS must list exactly four addresses (got ${#FABRIC[@]})" >&2; exit 1; }
 for _k in PORT TP_PORT MAX_MODEL_LEN SLOTS PREFILL_CHUNK READY_TIMEOUT_S STOP_GRACE_S MIN_AVAIL_GIB GUARD_START_MIB GUARD_MIB \
-  GUARD_SWAP_MAX_MIB DROP_CACHES_EVERY_S; do
+  GUARD_SWAP_MAX_MIB GUARD_SWAP_AVAIL_MIB DROP_CACHES_EVERY_S; do
   [[ ${!_k} =~ ^[0-9]+$ ]] || { echo "$_k must be a whole number (got '${!_k}')" >&2; exit 1; }
 done
 [[ -z $DUMP_DIR || $DUMP_DIR == /* ]] || { echo "DUMP_DIR must be an absolute path on the nodes (got '$DUMP_DIR')" >&2; exit 1; }
@@ -343,7 +344,9 @@ cmd_print_serve() {
 }
 
 AUTH=(); [[ -z $API_KEY ]] || AUTH=(-H "Authorization: Bearer $API_KEY")
-api_up() { curl -fsS -m 5 -o /dev/null "${AUTH[@]}" "$API/v1/models" 2>/dev/null; }
+# ready = /health answers 200: the HTTP front end listens (and /v1/models answers) from the first second, the engine only once
+# the group is loaded; /health is 503 until then
+api_up() { curl -fsS -m 5 -o /dev/null "${AUTH[@]}" "$API/health" 2>/dev/null; }
 
 # launch_rank RANK: the guard first (it validates itself, then waits for the rank's pid file), then the rank, detached
 # (setsid nohup; the previous log becomes .prev); fails, with the rank killed, unless the guard armed on the rank's pid.
@@ -366,7 +369,7 @@ launch_rank() {
     echo loading > "$stage"
     GUARD_PIDFILE=$pidf GUARD_RANK=$RANK GUARD_LOG=$glog GUARD_MIN_FILE=$gmin GUARD_STAGE_FILE=$stage \
     GUARD_WINDOW_FILE=$BASE_DIR/run/memwatch.window GUARD_SERVE_LOG=$log GUARD_START_MIB=$G_START GUARD_MIB=$G_MIB \
-    GUARD_SWAP_MAX_MIB=$G_SWAP DROP_CACHES_EVERY_S=$G_DROP \
+    GUARD_SWAP_MAX_MIB=$G_SWAP GUARD_SWAP_AVAIL_MIB=$G_SWAP_AVAIL DROP_CACHES_EVERY_S=$G_DROP \
       setsid nohup bash "$BASE_DIR/run/memguard.sh" >> "$glog" 2>&1 < /dev/null &
     gpid=$!
     echo "$gpid" > "$gpidf"
@@ -378,7 +381,9 @@ launch_rank() {
       echo "FAIL rank $RANK: the memory guard did not start, so the rank is not started:" >&2; cat "$glog" >&2; exit 1
     fi
     cd "$BASE_DIR"
-    setsid nohup bash -c "$CMD" > "$log" 2>&1 < /dev/null &
+    # the lab GPU lock, held exclusively for the rank'"'"'s whole life: fd 9 survives the exec into rexl3-serve and closes with it
+    setsid nohup bash -c "exec 9>>/tmp/rexl3-gpu.lock; flock -x -n 9 || { echo \"FAIL rank $RANK: /tmp/rexl3-gpu.lock is held by another GPU job\"; exit 75; }; $CMD" \
+      > "$log" 2>&1 < /dev/null &
     pid=$!
     echo "$pid" > "$pidf"
     for _ in $(seq 40); do
@@ -392,7 +397,7 @@ launch_rank() {
     if ! kill -0 "$pid" 2>/dev/null; then echo "FAIL rank $RANK: rexl3-serve exited at once:" >&2; tail -n 20 "$log" >&2; exit 1; fi
     echo "rank $RANK: pid $pid, guard $gpid, log $log"' \
     BASE_DIR="$BASE_DIR" RANK="$r" DUMP="$DUMP_DIR" CMD="$(serve_cmd "$r")" GUARD_SRC="$(<"$ROOT/scripts/memguard.sh")" \
-    G_START="$GUARD_START_MIB" G_MIB="$GUARD_MIB" G_SWAP="$GUARD_SWAP_MAX_MIB" G_DROP="$DROP_CACHES_EVERY_S"
+    G_START="$GUARD_START_MIB" G_MIB="$GUARD_MIB" G_SWAP="$GUARD_SWAP_MAX_MIB" G_SWAP_AVAIL="$GUARD_SWAP_AVAIL_MIB" G_DROP="$DROP_CACHES_EVERY_S"
 }
 
 # Boot watch, per rank: the rank and its guard alive, no `level=fatal` line; prints the last event seen.
@@ -422,7 +427,7 @@ cmd_start() {
       log "rank $r did not launch: stopping every rank"; print_tails; ( cmd_stop ) || true; die "start failed at rank $r"
     fi
   done
-  log "waiting up to ${READY_TIMEOUT_S}s for $API/v1/models"
+  log "waiting up to ${READY_TIMEOUT_S}s for $API/health"
   until api_up; do
     if ! out=$(every "$PROBE" BASE_DIR="$BASE_DIR"); then
       echo "$out"; print_tails; log "a rank failed during boot: stopping every rank"; ( cmd_stop ) || true
@@ -573,7 +578,7 @@ cmd_record() {
   REC_MODEL_REPO="$MODEL_REPO" REC_MODEL_REV="$MODEL_REV" REC_MODEL_DIR="$MODEL_DIR" REC_PINNED="$REXL3_COMMIT" \
   REC_UPSTREAM_BASE="$REXL3_UPSTREAM_BASE" REC_NCCL_LIB="$NCCL_LIB" REC_NCCL_SHA="$NCCL_SHA256" \
   REC_CONFIG="$(for k in PROFILE SERVED_NAME PORT TP_PORT MAX_MODEL_LEN SLOTS PREFILL_CHUNK EXTRA_FLAGS EXTRA_ENV DUMP_DIR \
-    GUARD_START_MIB GUARD_MIB GUARD_SWAP_MAX_MIB DROP_CACHES_EVERY_S; do printf '%s=%s\n' "$k" "${!k:-}"; done)" \
+    GUARD_START_MIB GUARD_MIB GUARD_SWAP_MAX_MIB GUARD_SWAP_AVAIL_MIB DROP_CACHES_EVERY_S; do printf '%s=%s\n' "$k" "${!k:-}"; done)" \
   python3 - <<'PY' || die "could not write the record"
 import json, os, re
 e = os.environ
