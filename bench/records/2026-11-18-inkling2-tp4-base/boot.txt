@@ -1,0 +1,6 @@
+rexl3 event=inkling2_plan slots=4 max_context=1048576 kv_pages=8196 kv_tokens=2097152 kv_gib=8.07 lanes_at_max_context=2 weights_gib=73.04 free_after_gib=32.96 floor_gib=8.00 reserve_gib=6.00 state_mib_per_slot=49.7 kv_bytes_per_token=4128 kv_dtype=int8
+rexl3 event=boot phase=tp_group_ready t=81.208
+rexl3 event=tp_group_ready ranks=4 boot_s=76.7
+rexl3 event=inkling2_plan slots=4 max_context=1048576 kv_pages=16388 kv_tokens=4194304 kv_gib=16.13 lanes_at_max_context=4 weights_gib=73.04 free_after_gib=31.96 floor_gib=8.00 reserve_gib=6.00 state_mib_per_slot=49.7 kv_bytes_per_token=4128 kv_dtype=int8
+rexl3 event=boot phase=tp_group_ready t=81.564
+rexl3 event=tp_group_ready ranks=4 boot_s=77.1

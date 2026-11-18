@@ -20,10 +20,11 @@ gates, first boot recorded. Performance toward the targets is the next phase (au
 - [x] engine family `inkling2` host half: config, inventory, bind (E mod 4), memory model, chat format
 - [ ] kernels: attention (relative logits, log scaling, l2 clips, sinks, gate, window/full, int8 KV), short convs,
       softcapped MoE activation, fp32 router, AttnRes mix, logit softcap, bf16-input linear
-- [ ] forward assembly + TP4 bring-up: first four-rank REXL3 group on the switch
+- [x] forward assembly + TP4 bring-up: first four-rank REXL3 group on the switch (engine `inkling2-fwd`, record
+      `bench/records/2026-11-18-inkling2-tp4-base`)
 - [ ] KV pool with 1M lanes, DSpark drafter, vision tower
 - [x] controller: doctor, fetch, verify, build
-- [ ] controller: start/stop/status/logs/smoke/print-serve, memory guard, STOP_OTHER/RESTORE_OTHER
+- [x] controller: start/stop/status/logs/smoke/print-serve/memwatch/record, memory guard (STOP_OTHER/RESTORE_OTHER: open)
 - [ ] correctness ladder: smoke → probe → oracle compare → pin/check → drafted == serial → cached == uncached →
       needle → quality → tools → api-test; first boot record
 - [ ] stop: hand off to the autoresearch phase
@@ -33,6 +34,6 @@ gates, first boot recorded. Performance toward the targets is the next phase (au
 - 70 tok/s: DSpark acceptance (unmeasured) vs requantizing BF16 attention before the baseline (changes the pack).
 - REXL3 four-rank groups are built but unmeasured upstream (`docs/examples/cluster.4node.json`).
 - REXL3 refuses `json_schema` response formats; acceptable for the clients?
-- Pack identity under split staging: `rexl3-serve --print-fingerprints` on rank 0's share gives
-  `sha256:ce6f9f1c…`, which covers only that rank's expert groups; the TP boot gate and a `VALIDATED_*` entry need an
-  identity every rank computes alike (shared tensors + the manifest), or per-rank expected fingerprints.
+- Pack identity under split staging: settled. The engine's fingerprint of a split-staged folder is the split form (config, every
+  plain tensor, the index's tensor-to-shard manifest), the same on every rank: `sha256:71d760435893535f318c51038935514e4e93fe5d58507edebc78c3a75cda5079`
+  (compared at the TP boot gate). Pin it in a `VALIDATED_*` entry before dropping `--allow-unvalidated-pack`.

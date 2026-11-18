@@ -1,0 +1,9 @@
+ok   chat (1.43s, finish length, usage {"prompt_tokens": 37, "completion_tokens": 32, "total_tokens": 69, "prompt_tokens_details": {"cached_tokens": 0}, "completion_tokens_details": {"reasoning_tokens": 30}, "spec": {"drafted": 0, "accepted": 0, "rounds": 31}})
+     content:   ''
+     reasoning: 'The user asks a simple factual question: capital of France, answer in one word. Need answer exactly one word likely "Paris". Need final'
+     token_ids: [200001, 200008, 371, 150409, 171960, 149878, 150744, 151231, 1355, 150377, 25, 151451, 149879, 151194, 11, 150893, 149881, 150011, 151290, 13, 170289, 150893, 152703, 150011, 151290, 152482, 196980, 3967, 1, 13, 170289, 150400]
+ok   completion (0.73s, finish length, usage {"prompt_tokens": 35, "completion_tokens": 16, "total_tokens": 51, "prompt_tokens_details": {"cached_tokens": 0}, "completion_tokens_details": {"reasoning_tokens": 0}, "spec": {"drafted": 0, "accepted": 0, "rounds": 15}})
+     prompt:    '1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,'
+     text:      ' 13, 14, 15, 16, 17, '
+     token_ids: [220, 68079, 11, 220, 68084, 11, 220, 68063, 11, 220, 68080, 11, 220, 68107, 11, 220]
+smoke: pass

@@ -1,0 +1,129 @@
+{
+ "name": "inkling2-tp4-base",
+ "date": "2026-11-18",
+ "recipe": {
+  "commit": "a31041dc8ced6e56618efc7bc5c5ab96b1695162",
+  "uncommitted_files": 2
+ },
+ "pack": {
+  "repo": "0xSero/Inkling-2-Small-EXL3-4bpw",
+  "revision": "996dc404c1feb3abd5330af8a3c52270ffe0008d",
+  "dir": "/home/spark/models/Inkling-2-Small-EXL3-4bpw"
+ },
+ "engine": {
+  "commit": "0f0d9febba450b5aaea5eb0fdc62af066d341b35",
+  "sha256": "4f5fdb853d39cec3e31fc5edb8c7e8f7351771ff67c47ba9d612a94ad65c0ec0",
+  "pinned_commit": "b97ef4ee943067e4e9d4a1f15766a5fcfaf4de18",
+  "lab_build": true,
+  "upstream_base": "06181b1d742912108361784257710806d9a75d18",
+  "version": {
+   "version": "0.1.1",
+   "commit": "0f0d9febba450b5aaea5eb0fdc62af066d341b35",
+   "system_fingerprint": "fp_0f0d9febba45_fcd25e29_cb1311",
+   "nvcc": "13.0.88",
+   "cuda_arch": "sm_121",
+   "kernel_hash": "fcd25e29a73e4233",
+   "cudart": "13.0",
+   "cuda_driver": "13.0",
+   "cublas": "13.1.1"
+  }
+ },
+ "nccl": {
+  "lib": "/home/spark/rexl3/lib/libnccl.so.2",
+  "sha256": "fc7ea66334edbc934aa25959b9907dbb2b91a1d2485beff18839afc45cbc08d0",
+  "env": [
+   "NCCL_SOCKET_IFNAME=enp1s0f1np1",
+   "NCCL_IB_HCA==rocep1s0f1:1,roceP2p1s0f1:1",
+   "NCCL_IB_GID_INDEX=3",
+   "NCCL_IB_TC=106",
+   "NCCL_MAX_NCHANNELS=4",
+   "NCCL_NET=IB",
+   "NCCL_IB_DISABLE=0",
+   "NCCL_IB_ADDR_FAMILY=AF_INET",
+   "NCCL_IB_ROCE_VERSION_NUM=2",
+   "NCCL_NET_PLUGIN=none",
+   "NCCL_DEBUG=WARN"
+  ]
+ },
+ "config": {
+  "PROFILE": "",
+  "SERVED_NAME": "inkling-2-small-exl3-4bpw-4x-dgx-spark",
+  "PORT": "8000",
+  "TP_PORT": "29571",
+  "MAX_MODEL_LEN": "1048576",
+  "SLOTS": "4",
+  "PREFILL_CHUNK": "1000",
+  "EXTRA_FLAGS": "--kv-tokens 2097152",
+  "EXTRA_ENV": "",
+  "DUMP_DIR": "",
+  "GUARD_START_MIB": "2048",
+  "GUARD_MIB": "1024",
+  "GUARD_SWAP_MAX_MIB": "64",
+  "GUARD_SWAP_AVAIL_MIB": "16384",
+  "DROP_CACHES_EVERY_S": "20"
+ },
+ "ranks": [
+  {
+   "rank": 0,
+   "host": "192.168.1.121",
+   "fabric": "10.100.10.1",
+   "command": "exec env -i HOME=/home/spark USER=spark LOGNAME=spark PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin NCCL_SOCKET_IFNAME=enp1s0f1np1 NCCL_IB_HCA==rocep1s0f1:1\\,roceP2p1s0f1:1 NCCL_IB_GID_INDEX=3 NCCL_IB_TC=106 NCCL_MAX_NCHANNELS=4 NCCL_NET=IB NCCL_IB_DISABLE=0 NCCL_IB_ADDR_FAMILY=AF_INET NCCL_IB_ROCE_VERSION_NUM=2 NCCL_NET_PLUGIN=none NCCL_DEBUG=WARN REXL3_NCCL_LIB=/home/spark/rexl3/lib/libnccl.so.2 RUST_BACKTRACE=1 /home/spark/inkling-2-small-exl3-4bpw-4x-dgx-spark/bin/rexl3-serve --model /home/spark/models/Inkling-2-Small-EXL3-4bpw --tp-ranks 4 --tp-rank 0 --tp-peer 10.100.10.1:29571 --max-model-len 1048576 --slots 4 --prefill-chunk 1000 --kv-dtype int8 --spec none --no-vision --allow-unvalidated-pack --served-model-name inkling-2-small-exl3-4bpw-4x-dgx-spark --host 0.0.0.0 --port 8000 --kv-tokens 2097152"
+  },
+  {
+   "rank": 1,
+   "host": "192.168.1.122",
+   "fabric": "10.100.10.2",
+   "command": "exec env -i HOME=/home/spark USER=spark LOGNAME=spark PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin NCCL_SOCKET_IFNAME=enp1s0f1np1 NCCL_IB_HCA==rocep1s0f1:1\\,roceP2p1s0f1:1 NCCL_IB_GID_INDEX=3 NCCL_IB_TC=106 NCCL_MAX_NCHANNELS=4 NCCL_NET=IB NCCL_IB_DISABLE=0 NCCL_IB_ADDR_FAMILY=AF_INET NCCL_IB_ROCE_VERSION_NUM=2 NCCL_NET_PLUGIN=none NCCL_DEBUG=WARN REXL3_NCCL_LIB=/home/spark/rexl3/lib/libnccl.so.2 RUST_BACKTRACE=1 /home/spark/inkling-2-small-exl3-4bpw-4x-dgx-spark/bin/rexl3-serve --model /home/spark/models/Inkling-2-Small-EXL3-4bpw --tp-ranks 4 --tp-rank 1 --tp-peer 10.100.10.1:29571 --max-model-len 1048576 --slots 4 --prefill-chunk 1000 --kv-dtype int8 --spec none --no-vision --allow-unvalidated-pack --served-model-name inkling-2-small-exl3-4bpw-4x-dgx-spark --host 0.0.0.0 --port 8000 --kv-tokens 2097152"
+  },
+  {
+   "rank": 2,
+   "host": "192.168.1.123",
+   "fabric": "10.100.10.3",
+   "command": "exec env -i HOME=/home/spark USER=spark LOGNAME=spark PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin NCCL_SOCKET_IFNAME=enp1s0f1np1 NCCL_IB_HCA==rocep1s0f1:1\\,roceP2p1s0f1:1 NCCL_IB_GID_INDEX=3 NCCL_IB_TC=106 NCCL_MAX_NCHANNELS=4 NCCL_NET=IB NCCL_IB_DISABLE=0 NCCL_IB_ADDR_FAMILY=AF_INET NCCL_IB_ROCE_VERSION_NUM=2 NCCL_NET_PLUGIN=none NCCL_DEBUG=WARN REXL3_NCCL_LIB=/home/spark/rexl3/lib/libnccl.so.2 RUST_BACKTRACE=1 /home/spark/inkling-2-small-exl3-4bpw-4x-dgx-spark/bin/rexl3-serve --model /home/spark/models/Inkling-2-Small-EXL3-4bpw --tp-ranks 4 --tp-rank 2 --tp-peer 10.100.10.1:29571 --max-model-len 1048576 --slots 4 --prefill-chunk 1000 --kv-dtype int8 --spec none --no-vision --allow-unvalidated-pack --served-model-name inkling-2-small-exl3-4bpw-4x-dgx-spark --host 0.0.0.0 --port 8000 --kv-tokens 2097152"
+  },
+  {
+   "rank": 3,
+   "host": "192.168.1.18",
+   "fabric": "10.100.10.4",
+   "command": "exec env -i HOME=/home/spark USER=spark LOGNAME=spark PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin NCCL_SOCKET_IFNAME=enp1s0f1np1 NCCL_IB_HCA==rocep1s0f1:1\\,roceP2p1s0f1:1 NCCL_IB_GID_INDEX=3 NCCL_IB_TC=106 NCCL_MAX_NCHANNELS=4 NCCL_NET=IB NCCL_IB_DISABLE=0 NCCL_IB_ADDR_FAMILY=AF_INET NCCL_IB_ROCE_VERSION_NUM=2 NCCL_NET_PLUGIN=none NCCL_DEBUG=WARN REXL3_NCCL_LIB=/home/spark/rexl3/lib/libnccl.so.2 RUST_BACKTRACE=1 /home/spark/inkling-2-small-exl3-4bpw-4x-dgx-spark/bin/rexl3-serve --model /home/spark/models/Inkling-2-Small-EXL3-4bpw --tp-ranks 4 --tp-rank 3 --tp-peer 10.100.10.1:29571 --max-model-len 1048576 --slots 4 --prefill-chunk 1000 --kv-dtype int8 --spec none --no-vision --allow-unvalidated-pack --served-model-name inkling-2-small-exl3-4bpw-4x-dgx-spark --host 0.0.0.0 --port 8000 --kv-tokens 2097152"
+  }
+ ],
+ "results": [
+  {
+   "file": "boot.txt",
+   "what": "capacity lines: full pool 4 x 1,048,576 (kv_pages 16388, 16.13 GiB, lanes_at_max_context=4, floor 8 GiB) and the 2,097,152-token pool used while rank 0 shared memory with the oracle job"
+  },
+  {
+   "file": "oracle/greedy-bootA.json, oracle/greedy-bootB.json",
+   "what": "greedy tokens == oracle on chat-capital-effort0, chat-sky-effort0.9 (first difference at 23, an excused near-tie, margin 0.047), raw-counting; identical on two boots"
+  },
+  {
+   "file": "oracle/*.report.json",
+   "what": "compare.py over the boot-B dump (PREFILL_CHUNK=1000, DUMP_DIR): tokens pass on all 3; logits KL mean 1.19e-2 / 4.21e-3 / 4.58e-4, top-1 0.975 / 0.959 / 1.000; hidden and h_final cosine gates FAIL at rows where the router flips (flips at margins <= 0.071; identical sets 82 / 89 / 71 %); median relative hidden error grows from 0.3 % (after layer 0, the experts' fp16 path) to ~10 % mid-stack; the oracle keeps bf16 KV, the engine int8"
+  },
+  {
+   "file": "exactness/concurrent.json",
+   "what": "concurrent (4 slots) == solo: 4 prompts of 16, 521, 2030, 8334 tokens, 128 greedy tokens each, ids identical (prompt_logprobs is not served by this engine)"
+  },
+  {
+   "file": "exactness/bootA-chunk4096.json, exactness/bootC-chunk1000.json",
+   "what": "two boots (engine 9b9759e and 0f0d9fe, identical forward), --prefill-chunk 4096 vs 1000: replies byte-identical (exactness.py diff: identical)"
+  },
+  {
+   "file": "needle-200k.json",
+   "what": "210,286-token prompt, needle at depth 0.5 retrieved in the reasoning (max_tokens 64 cut the answer), 226 s"
+  },
+  {
+   "file": "needle-1m.json",
+   "what": "1,047,598-token prompt, one lane, answered OTTER-2624-OTTER correctly, 1802 s wall"
+  },
+  {
+   "file": "memwatch.txt",
+   "what": "MemAvailable minima per rank (rank 0 shares the node with the oracle job): rank 0 20,502 MiB, ranks 1-3 31,061 / 31,192 / 31,180 MiB over the 2M-pool boot incl. the 1M needle; the 4M-pool boot ran rank 0 down to 11 GiB with the paused oracle job and the guard killed it on swap growth"
+  },
+  {
+   "file": "smoke.txt",
+   "what": "./inkling2.sh smoke: pass"
+  }
+ ]
+}

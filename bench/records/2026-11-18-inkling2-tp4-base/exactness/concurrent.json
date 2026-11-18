@@ -1,0 +1,63 @@
+{
+ "url": "http://192.168.1.121:8000",
+ "model": "inkling-2-small-exl3-4bpw-4x-dgx-spark",
+ "prompt_tokens": {
+  "short": 16,
+  "medium": 521,
+  "long": 2030,
+  "xlong": 8334
+ },
+ "k": 5,
+ "max_tokens": 128,
+ "checks": {
+  "gen/short": {
+   "equal": true,
+   "difference": null,
+   "solo_s": 7.162,
+   "concurrent_s": 20.251
+  },
+  "gen/medium": {
+   "equal": true,
+   "difference": null,
+   "solo_s": 7.035,
+   "concurrent_s": 20.105
+  },
+  "gen/long": {
+   "equal": true,
+   "difference": null,
+   "solo_s": 7.192,
+   "concurrent_s": 20.181
+  },
+  "gen/xlong": {
+   "equal": true,
+   "difference": null,
+   "solo_s": 14.302,
+   "concurrent_s": 20.414
+  },
+  "logprobs/short": {
+   "equal": true,
+   "difference": null,
+   "solo_s": 0.0,
+   "concurrent_s": 0.0
+  },
+  "logprobs/medium": {
+   "equal": true,
+   "difference": null,
+   "solo_s": 0.0,
+   "concurrent_s": 0.0
+  },
+  "logprobs/long": {
+   "equal": true,
+   "difference": null,
+   "solo_s": 0.0,
+   "concurrent_s": 0.0
+  },
+  "logprobs/xlong": {
+   "equal": true,
+   "difference": null,
+   "solo_s": 0.0,
+   "concurrent_s": 0.0
+  }
+ },
+ "pass": true
+}

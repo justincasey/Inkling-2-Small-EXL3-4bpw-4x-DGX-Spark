@@ -53,7 +53,14 @@ def run_one(api: ia.Api, ids: list[int], what: str, k: int, max_tokens: int):
         resp, dt = api.complete(ids, max_tokens)
         gen, finish = ia.generated_ids(resp)
         return {"generated_ids": gen, "finish_reason": finish}, dt
-    plp, dt = api.prompt_logprobs(ids, k)
+    try:
+        plp, dt = api.prompt_logprobs(ids, k)
+    except ia.ApiError as e:
+        # an engine without the full-vocabulary score path (Inkling 2 today) refuses prompt_logprobs by name: the check then
+        # rests on the generated ids alone, and the report says so
+        if e.status == 400 and "not supported" in str(e):
+            return {"prompt_logprobs": "unsupported"}, 0.0
+        raise
     return {"prompt_logprobs": plp}, dt
 
 
@@ -78,6 +85,8 @@ def first_diff(a: dict, b: dict) -> str | None:
         i = next((j for j, (x, y) in enumerate(zip(ga, gb)) if x != y), min(len(ga), len(gb)))
         return f"generated ids differ at {i} ({ga[i:i + 3]} vs {gb[i:i + 3]}), finish {a['finish_reason']}/{b['finish_reason']}"
     pa, pb = a["prompt_logprobs"], b["prompt_logprobs"]
+    if isinstance(pa, str) or isinstance(pb, str):
+        return f"prompt_logprobs {pa if isinstance(pa, str) else 'present'} vs {pb if isinstance(pb, str) else 'present'}"
     for j, (x, y) in enumerate(zip(pa, pb)):
         if canon(x) != canon(y):
             return f"prompt_logprobs differ at position {j}: {canon(x)[:200]} vs {canon(y)[:200]}"

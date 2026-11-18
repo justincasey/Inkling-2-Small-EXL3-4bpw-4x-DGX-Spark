@@ -1,0 +1,4 @@
+[r0] memwatch rank=0 guard=running window=20261118T020819Z-67 window_min_mib=21144 window_min_at=2026-11-18T02:19:51Z loading_min_mib=21730 ready_min_mib=20502 min_mib=20502 min_at=2026-11-18T02:04:00Z now_mib=21370 updated=2026-11-18T02:38:31Z
+[r1] memwatch rank=1 guard=running window=20261118T020819Z-67 window_min_mib=31988 window_min_at=2026-11-18T02:29:20Z loading_min_mib=31098 ready_min_mib=31061 min_mib=31061 min_at=2026-11-18T02:03:53Z now_mib=32124 updated=2026-11-18T02:38:31Z
+[r2] memwatch rank=2 guard=running window=20261118T020819Z-67 window_min_mib=31664 window_min_at=2026-11-18T02:11:34Z loading_min_mib=31399 ready_min_mib=31192 min_mib=31192 min_at=2026-11-18T02:03:57Z now_mib=31868 updated=2026-11-18T02:38:31Z
+[r3] memwatch rank=3 guard=running window=20261118T020819Z-67 window_min_mib=31856 window_min_at=2026-11-18T02:15:00Z loading_min_mib=31180 ready_min_mib=31656 min_mib=31180 min_at=2026-11-18T02:03:30Z now_mib=31972 updated=2026-11-18T02:38:31Z
