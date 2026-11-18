@@ -6,3 +6,6 @@ __pycache__/
 *.pyc
 .ruff_cache/
 *.download.log
+oracle/.venv/
+oracle/.cache/
+oracle/exl3dq/target/
