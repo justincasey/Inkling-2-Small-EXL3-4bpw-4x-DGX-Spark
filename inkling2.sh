@@ -39,6 +39,8 @@
 #                  window, while loading, once ready, overall (the guards' records)
 #   record NAME    create bench/records/<date>-NAME/meta.json: engine commit and sha256 from the installed binaries,
 #                  pack revision, pins, configuration and every rank's print-serve line
+#   stop-other     run STOP_OTHER: take down the stack that normally owns these GPUs (DeepSeek-V4.1 4x, spark-ds41f)
+#   restore-other  stop this stack, then run RESTORE_OTHER
 #   help
 #
 # Configuration: environment > .env > defaults below. Every key is documented in .env.example.
@@ -72,12 +74,15 @@ source "$ROOT/config/pins.sh"
 : "${BASE_DIR:=/home/spark/inkling-2-small-exl3-4bpw-4x-dgx-spark}"           # engine build, binaries, logs on each node
 : "${REXL3_SRC:=$HOME/projects/REXL3}"                                          # local engine git repository (this machine)
 : "${ALLOWED_CONTAINERS:=mentatd glm53-nfs}"                                    # containers that may run beside the ranks
+: "${STOP_OTHER:=}"                                                              # shell command: stop the GPUs' usual owner
+: "${RESTORE_OTHER:=}"                                                           # shell command: bring it back
 : "${SERVED_NAME:=inkling-2-small-exl3-4bpw-4x-dgx-spark}"
 : "${PORT:=8000}"                                                               # rank 0's HTTP API
 : "${API_KEY:=}"                                                                # sent as a bearer token by the tools when set
 : "${TP_PORT:=29571}"                                                           # rank 0's TP rendezvous on its rail-0 address
 : "${MAX_MODEL_LEN:=1048576}"
 : "${SLOTS:=4}"
+: "${KV_TOKENS:=$((SLOTS * MAX_MODEL_LEN))}"                                       # --kv-tokens: the KV pool, default every lane full
 : "${PREFILL_CHUNK:=4096}"
 : "${EXTRA_FLAGS:=}"                                                            # more rexl3-serve flags, every rank alike
 : "${EXTRA_ENV:=}"                                                              # more KEY=VALUE words, every rank alike
@@ -92,7 +97,7 @@ source "$ROOT/config/pins.sh"
 : "${GUARD_START_MIB:=2048}"                                                    # guard floor while the pack loads
 : "${GUARD_MIB:=1024}"                                                          # guard floor once ready
 : "${GUARD_SWAP_MAX_MIB:=64}"                                                   # guard: swap growth that kills the rank...
-: "${GUARD_SWAP_AVAIL_MIB:=16384}"                                              # ...while MemAvailable is under this
+: "${GUARD_SWAP_AVAIL_MIB:=8192}"                                               # ...while MemAvailable is under this (the engine floor)
 : "${DROP_CACHES_EVERY_S:=20}"                                                  # guard: page-cache drop while loading
 RANKS_FILE=config/pack-ranks.tsv
 
@@ -100,7 +105,7 @@ read -r -a NODE <<<"$NODES"
 read -r -a FABRIC <<<"$FABRIC_ADDRS"
 (( ${#NODE[@]} == 4 )) || { echo "NODES must list exactly four management addresses (got ${#NODE[@]})" >&2; exit 1; }
 (( ${#FABRIC[@]} == 4 )) || { echo "FABRIC_ADDRS must list exactly four addresses (got ${#FABRIC[@]})" >&2; exit 1; }
-for _k in PORT TP_PORT MAX_MODEL_LEN SLOTS PREFILL_CHUNK READY_TIMEOUT_S STOP_GRACE_S MIN_AVAIL_GIB GUARD_START_MIB GUARD_MIB \
+for _k in PORT TP_PORT MAX_MODEL_LEN SLOTS KV_TOKENS PREFILL_CHUNK READY_TIMEOUT_S STOP_GRACE_S MIN_AVAIL_GIB GUARD_START_MIB GUARD_MIB \
   GUARD_SWAP_MAX_MIB GUARD_SWAP_AVAIL_MIB DROP_CACHES_EVERY_S; do
   [[ ${!_k} =~ ^[0-9]+$ ]] || { echo "$_k must be a whole number (got '${!_k}')" >&2; exit 1; }
 done
@@ -342,7 +347,7 @@ serve_cmd() {
   [[ -z $MEMORY_FLOOR_GIB ]] || env+=(REXL3_MEMORY_FLOOR_GIB="$MEMORY_FLOOR_GIB")
   env+=("${extra_env[@]}")
   args=(--model "$MODEL_DIR" --tp-ranks 4 --tp-rank "$r" --tp-peer "${FABRIC[0]}:$TP_PORT"
-    --max-model-len "$MAX_MODEL_LEN" --slots "$SLOTS" --prefill-chunk "$PREFILL_CHUNK" --kv-dtype int8 --spec "$SPEC")
+    --max-model-len "$MAX_MODEL_LEN" --slots "$SLOTS" --kv-tokens "$KV_TOKENS" --prefill-chunk "$PREFILL_CHUNK" --kv-dtype int8 --spec "$SPEC")
   case $PREFIX_CACHE in
     on|off) args+=(--prefix-cache "$PREFIX_CACHE") ;;
     auto) ;;   # the engine's default: on when the KV plan leaves memory spare
@@ -607,7 +612,7 @@ cmd_record() {
   REC_DIRTY="$(git -C "$ROOT" status --porcelain 2>/dev/null | grep -c . || true)" \
   REC_MODEL_REPO="$MODEL_REPO" REC_MODEL_REV="$MODEL_REV" REC_MODEL_DIR="$MODEL_DIR" REC_PINNED="$REXL3_COMMIT" \
   REC_UPSTREAM_BASE="$REXL3_UPSTREAM_BASE" REC_NCCL_LIB="$NCCL_LIB" REC_NCCL_SHA="$NCCL_SHA256" \
-  REC_CONFIG="$(for k in PROFILE SERVED_NAME PORT TP_PORT MAX_MODEL_LEN SLOTS PREFILL_CHUNK SPEC PREFIX_CACHE VISION MEMORY_FLOOR_GIB \
+  REC_CONFIG="$(for k in PROFILE SERVED_NAME PORT TP_PORT MAX_MODEL_LEN SLOTS KV_TOKENS PREFILL_CHUNK SPEC PREFIX_CACHE VISION MEMORY_FLOOR_GIB \
     EXTRA_FLAGS EXTRA_ENV DUMP_DIR \
     GUARD_START_MIB GUARD_MIB GUARD_SWAP_MAX_MIB GUARD_SWAP_AVAIL_MIB DROP_CACHES_EVERY_S; do printf '%s=%s\n' "$k" "${!k:-}"; done)" \
   python3 - <<'PY' || die "could not write the record"
@@ -652,6 +657,13 @@ print(os.path.join(e["REC_DIR"], "meta.json"))
 PY
 }
 
+cmd_stop_other() { [[ -n $STOP_OTHER ]] || die "STOP_OTHER is not set (.env.example)"; log "STOP_OTHER"; bash -c "$STOP_OTHER"; }
+cmd_restore_other() {
+  [[ -n $RESTORE_OTHER ]] || die "RESTORE_OTHER is not set (.env.example)"
+  cmd_stop
+  log "RESTORE_OTHER"; bash -c "$RESTORE_OTHER"
+}
+
 cmd_help() { sed -n '3,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; }
 
 case ${1:-help} in
@@ -668,6 +680,8 @@ case ${1:-help} in
   smoke) cmd_smoke ;;
   memwatch) shift; cmd_memwatch "$@" ;;
   record) shift; cmd_record "$@" ;;
+  stop-other) cmd_stop_other ;;
+  restore-other) cmd_restore_other ;;
   help|-h|--help) cmd_help ;;
   *) cmd_help >&2; exit 2 ;;
 esac

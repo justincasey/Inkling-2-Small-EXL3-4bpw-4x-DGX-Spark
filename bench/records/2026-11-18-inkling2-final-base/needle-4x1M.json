@@ -1,0 +1,160 @@
+{
+ "url": "http://192.168.1.121:8000",
+ "model": "inkling-2-small-exl3-4bpw-4x-dgx-spark",
+ "date": "2026-11-18T07:45:51Z",
+ "tokens_per_sentence": 25.7745,
+ "lanes": [
+  {
+   "lane": 0,
+   "depth": 0.2,
+   "target_tokens": 1040000,
+   "code": "OTTER-2624-OTTER",
+   "sentences": 38338,
+   "prompt_tokens_rendered": 1044268,
+   "sizing": "render",
+   "admitted_s": 0.328,
+   "status": "answered",
+   "http_status": 200,
+   "admitted": true,
+   "prefill_s": 6156.258,
+   "total_s": 6193.66,
+   "finish_reason": "stop",
+   "usage": {
+    "prompt_tokens": 1044268,
+    "completion_tokens": 103,
+    "total_tokens": 1044371,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 89
+    },
+    "spec": {
+     "drafted": 273,
+     "accepted": 63,
+     "rounds": 39
+    }
+   },
+   "prompt_tokens": 1044268,
+   "answer": "OTTER-2624-OTTER",
+   "reasoning_tail": "pass-code only. Need find in archive. The user included huge archive and says exactly one note states secret pass-code. I saw in the text near entry 1000-7667: \"Important notice: the secret pass-code is OTTER-2624-OTTER. Keep it safe.\" Need answer with pass-code only. Ensure exact: OTTER-2624-OTTER.",
+   "found": true,
+   "found_in_reasoning": true
+  },
+  {
+   "lane": 1,
+   "depth": 0.4,
+   "target_tokens": 1040000,
+   "code": "AMBER-4244-COBALT",
+   "sentences": 38329,
+   "prompt_tokens_rendered": 1044231,
+   "sizing": "render",
+   "admitted_s": 3.312,
+   "status": "answered",
+   "http_status": 200,
+   "admitted": true,
+   "prefill_s": 6169.184,
+   "total_s": 6194.318,
+   "finish_reason": "stop",
+   "usage": {
+    "prompt_tokens": 1044231,
+    "completion_tokens": 94,
+    "total_tokens": 1044325,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 79
+    },
+    "spec": {
+     "drafted": 245,
+     "accepted": 58,
+     "rounds": 35
+    }
+   },
+   "prompt_tokens": 1044231,
+   "answer": "AMBER-4244-COBALT",
+   "reasoning_tail": "We need answer pass-code only. Need find in huge archive. We can search mentally? The text includes one line: \"Important notice: the secret pass-code is AMBER-4244-COBALT. Keep it safe.\" Need output exactly pass-code only. Ensure no extra words. Final should be AMBER-4244-COBALT.",
+   "found": true,
+   "found_in_reasoning": true
+  },
+  {
+   "lane": 2,
+   "depth": 0.6,
+   "target_tokens": 1040000,
+   "code": "SAFFRON-7901-JUNIPER",
+   "sentences": 38336,
+   "prompt_tokens_rendered": 1044274,
+   "sizing": "render",
+   "admitted_s": 3.321,
+   "status": "answered",
+   "http_status": 200,
+   "admitted": true,
+   "prefill_s": 6169.946,
+   "total_s": 6195.214,
+   "finish_reason": "stop",
+   "usage": {
+    "prompt_tokens": 1044274,
+    "completion_tokens": 106,
+    "total_tokens": 1044380,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 90
+    },
+    "spec": {
+     "drafted": 280,
+     "accepted": 65,
+     "rounds": 40
+    }
+   },
+   "prompt_tokens": 1044274,
+   "answer": "SAFFRON-7901-JUNIPER",
+   "reasoning_tail": "-code only. Need find in archive. The user included a huge archive and says exactly one note states a secret pass-code. I saw in the text near the end: \"Important notice: the secret pass-code is SAFFRON-7901-JUNIPER. Keep it safe.\" Need answer with pass-code only. Ensure exact: SAFFRON-7901-JUNIPER.",
+   "found": true,
+   "found_in_reasoning": true
+  },
+  {
+   "lane": 3,
+   "depth": 0.8,
+   "target_tokens": 1040000,
+   "code": "QUARTZ-6898-JUNIPER",
+   "sentences": 38316,
+   "prompt_tokens_rendered": 1044275,
+   "sizing": "render",
+   "admitted_s": 3.335,
+   "status": "answered",
+   "http_status": 200,
+   "admitted": true,
+   "prefill_s": 6168.45,
+   "total_s": 6192.198,
+   "finish_reason": "stop",
+   "usage": {
+    "prompt_tokens": 1044275,
+    "completion_tokens": 105,
+    "total_tokens": 1044380,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 89
+    },
+    "spec": {
+     "drafted": 231,
+     "accepted": 71,
+     "rounds": 33
+    }
+   },
+   "prompt_tokens": 1044275,
+   "answer": "QUARTZ-6898-JUNIPER",
+   "reasoning_tail": "ss-code only. Need find in archive. The user included a huge archive and says exactly one note states secret pass-code. I saw in the prompt near the end: \"Important notice: the secret pass-code is QUARTZ-6898-JUNIPER. Keep it safe.\" Need answer with pass-code only. Ensure exact: QUARTZ-6898-JUNIPER.",
+   "found": true,
+   "found_in_reasoning": true
+  }
+ ],
+ "wall_s": 6195.23,
+ "all_admitted": true,
+ "all_answered": true,
+ "pass": true
+}

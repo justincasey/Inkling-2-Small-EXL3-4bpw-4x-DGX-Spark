@@ -1,7 +1,7 @@
 # Fit — 0xSero/Inkling-2-Small-EXL3-4bpw on four Sparks (TP4)
 
-Arithmetic from `intake/census.json`, `config/pack-ranks.tsv` and the `mtp.safetensors` header. No engine number is in
-this file; the first boot's capacity line and `MemAvailable` replace every estimate here.
+Arithmetic from `intake/census.json`, `config/pack-ranks.tsv` and the `mtp.safetensors` header, written before the
+first boot. The measured section at the end (capacity line and `MemAvailable` of the recorded boots) supersedes it.
 
 ## Pack
 
@@ -62,8 +62,27 @@ sliding-window layers and drafter layers 0, 1, 3, 4 keep a fixed 1,024-token rin
 | **int8 + per (token, KV head) scale (chosen, `docs/DECISIONS.md`)** | **~4.6 GiB** | **4 / 5** |
 | 4-bit (dsv41 q4 style) + scales | ~2.4 GiB | 7 / 9 |
 
-## Profiles (all `PROFILE_MEASURED=0`)
+## Measured (`bench/records/2026-11-18-inkling2-final-base/`, engine `f4e27ca`)
+
+Capacity line of rank 0 (all ranks plan alike):
+
+```
+slots=4 max_context=1048576 kv_pages=16388 kv_tokens=4194304 kv_gib=18.15 lanes_at_max_context=4 weights_gib=73.94
+free_after_gib=41.00 floor_gib=8.00 reserve_gib=6.00 state_mib_per_slot=67.7 kv_bytes_per_token=4644 kv_dtype=int8
+drafter=dspark:plane=Int8 prefix_entries=16 prefix_pages=4781 prefix_gib=6.03 prefix_reach_tokens=1223936
+```
+
+| Item | Estimate above | Measured |
+|---|---:|---:|
+| weights per rank | 74.45 GiB | 73.94 GiB |
+| KV per token per rank | 9 KiB bf16 / ~4.6 KiB int8 | 4,644 B (int8 target 4,128 + int8 draft plane 516) |
+| 4 x 1M lanes | ~18.4 GiB | 18.15 GiB |
+| per-slot state (rings, conv, drafter) | — | 67.7 MiB |
+| prefix cache | — | 6.03 GiB, 16 entries |
+| MemAvailable minimum under load | ~10 GiB floor | `memwatch-*.txt` in the record (9.9-12.1 GiB) |
+
+## Profiles
 
 | Profile | Window × lanes | KV per rank | Status |
 |---|---|---:|---|
-| bootstrap | 1,048,576 × 4, int8 | ~18.4 GiB | unmeasured; first boot sets the real pool from the engine's capacity line |
+| default (`.env.example`) | 1,048,576 × 4, int8, DSpark, prefix cache, vision | 18.15 GiB | measured, record above |

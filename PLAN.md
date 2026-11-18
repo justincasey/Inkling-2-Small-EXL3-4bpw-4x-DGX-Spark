@@ -16,18 +16,19 @@ gates, first boot recorded. Performance toward the targets is the next phase (au
 - [x] intake: manifest, census, per-rank file split (`intake/`, `config/pack-ranks.tsv`), fit (`docs/FIT.md`)
 - [x] staging: `./inkling2.sh fetch` + `verify` on all four nodes (91.02 GB each, sha256-verified)
 - [x] spec: op-by-op forward of target, drafter, vision (`docs/PORT-SPEC.md`, `docs/NUMERICS.md`)
-- [ ] oracle: fp64 reference (`oracle/`, done) + real-pack fixtures (running on rank 0)
+- [x] oracle: fp64 reference (`oracle/`) + real-pack fixtures (4 prompts incl. one past the 1024 window); gap explained,
+      binding op-level gate (`docs/ORACLE-GAP.md`)
 - [x] engine family `inkling2` host half: config, inventory, bind (E mod 4), memory model, chat format
-- [ ] kernels: attention (relative logits, log scaling, l2 clips, sinks, gate, window/full, int8 KV), short convs,
-      softcapped MoE activation, fp32 router, AttnRes mix, logit softcap, bf16-input linear
-- [x] forward assembly + TP4 bring-up: first four-rank REXL3 group on the switch (engine `inkling2-fwd`, record
-      `bench/records/2026-11-18-inkling2-tp4-base`)
-- [ ] KV pool with 1M lanes, DSpark drafter, vision tower
-- [x] controller: doctor, fetch, verify, build
-- [x] controller: start/stop/status/logs/smoke/print-serve/memwatch/record, memory guard (STOP_OTHER/RESTORE_OTHER: open)
-- [ ] correctness ladder: smoke → probe → oracle compare → pin/check → drafted == serial → cached == uncached →
-      needle → quality → tools → api-test; first boot record
-- [ ] stop: hand off to the autoresearch phase
+- [x] kernels: attention (relative logits, log scaling, l2 clips, sinks, gate, window/full, int8 KV), short convs,
+      softcapped MoE activation, fp32 router, AttnRes mix, logit softcap, bf16-input linear, vision tower, DSpark drafter
+- [x] forward assembly + TP4 bring-up: first four-rank REXL3 group on the switch (`bench/records/2026-11-18-inkling2-tp4-base`)
+- [x] 4 x 1M int8 lanes, DSpark wired, prefix cache, vision through the group (engine `f4e27ca`, pinned)
+- [x] controller: doctor, fetch, verify, build, start/stop/status/logs/smoke/print-serve/memwatch/record,
+      stop-other/restore-other, memory guard
+- [x] correctness gates (`bench/records/2026-11-18-inkling2-final-base`): smoke (chat, completion, tool call, reasoning,
+      image), oracle, drafted == serial, cached == uncached, concurrent == solo, chunk width, boot to boot, 4 x 1M needles.
+      Not run in this phase: a quality benchmark and the API conformance suite (next phase's harness).
+- [x] stop: hand off to the autoresearch phase
 
 ## Open questions
 

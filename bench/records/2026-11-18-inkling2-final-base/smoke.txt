@@ -1,0 +1,25 @@
+ok   chat (0.81s, finish length, usage {"prompt_tokens": 37, "completion_tokens": 32, "total_tokens": 69, "prompt_tokens_details": {"cached_tokens": 0}, "completion_tokens_details": {"reasoning_tokens": 30}, "spec": {"drafted": 47, "accepted": 24, "rounds": 7}}; spec drafted=47 accepted=24 rounds=7 acceptance=0.5106 tokens/round=4.5714)
+     content:   ''
+     reasoning: 'The user asks a simple factual question: capital of France, answer in one word. Need answer exactly one word likely "Paris". Need final'
+     token_ids: [200001, 200008, 371, 150409, 171960, 149878, 150744, 151231, 1355, 150377, 25, 151451, 149879, 151194, 11, 150893, 149881, 150011, 151290, 13, 170289, 150893, 152703, 150011, 151290, 152482, 196980, 3967, 1, 13, 170289, 150400]
+ok   completion (0.29s, finish length, usage {"prompt_tokens": 35, "completion_tokens": 16, "total_tokens": 51, "prompt_tokens_details": {"cached_tokens": 0}, "completion_tokens_details": {"reasoning_tokens": 0}, "spec": {"drafted": 13, "accepted": 13, "rounds": 2}}; spec drafted=13 accepted=13 rounds=2 acceptance=1.0 tokens/round=8.0)
+     prompt:    '1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,'
+     text:      ' 13, 14, 15, 16, 17, '
+     token_ids: [220, 68079, 11, 220, 68084, 11, 220, 68063, 11, 220, 68080, 11, 220, 68107, 11, 220]
+ok   tool (1.38s, finish tool_calls, usage {"prompt_tokens": 128, "completion_tokens": 54, "total_tokens": 182, "prompt_tokens_details": {"cached_tokens": 0}, "completion_tokens_details": {"reasoning_tokens": 20}, "spec": {"drafted": 84, "accepted": 41, "rounds": 12}}; spec drafted=84 accepted=41 rounds=12 acceptance=0.4881 tokens/round=4.5)
+     tool_calls: [{"id": "call_b673b057887760bc", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Paris\"}"}}]
+     content:    ''
+     reasoning:  'The user asks weather in Paris and explicitly says use get_weather tool. Need call it.'
+ok   think-on (2.49s, finish stop, usage {"prompt_tokens": 38, "completion_tokens": 88, "total_tokens": 126, "prompt_tokens_details": {"cached_tokens": 0}, "completion_tokens_details": {"reasoning_tokens": 61}, "spec": {"drafted": 175, "accepted": 62, "rounds": 25}}; spec drafted=175 accepted=62 rounds=25 acceptance=0.3543 tokens/round=3.52)
+     reasoning_effort 'high': reasoning_tokens=61, reasoning 214 chars, content 64 chars
+     content:   '9 sheep are left. “All but 9 run away” means 9 did not run away.'
+     reasoning: 'The user is asking a classic riddle. Need answer: all but 9 run away means 9 remain. Need be careful: farmer has 17 sheep, all but 9 run away, so 9 sheep left (not 8). Provide concise answer. Maybe explain briefly.'
+ok   think-off (1.03s, finish stop, usage {"prompt_tokens": 36, "completion_tokens": 39, "total_tokens": 75, "prompt_tokens_details": {"cached_tokens": 0}, "completion_tokens_details": {"reasoning_tokens": 0}, "spec": {"drafted": 63, "accepted": 29, "rounds": 9}}; spec drafted=63 accepted=29 rounds=9 acceptance=0.4603 tokens/round=4.3333)
+     reasoning_effort 'none': reasoning_tokens=0, reasoning 0 chars, content 123 chars
+     content:   'The farmer has 9 sheep left. The phrase "all but 9" means that 9 sheep did not run away, so those 9 remain with the farmer.'
+     reasoning: ''
+ok   image (3.60s, finish stop, usage {"prompt_tokens": 70, "completion_tokens": 133, "total_tokens": 203, "prompt_tokens_details": {"cached_tokens": 0}, "completion_tokens_details": {"reasoning_tokens": 124}, "spec": {"drafted": 266, "accepted": 94, "rounds": 38}}; spec drafted=266 accepted=94 rounds=38 acceptance=0.3534 tokens/round=3.5)
+     image red-square (240x240 PNG, 970 bytes as a data URL), colour words ['red'] in: content
+     content:   'Red square.'
+     reasoning: "The user is asking about an image. Need answer briefly. Need identify color and shape. Image shows a red square/rectangle? Let's inspect visually: a solid red shape centered on white background. It appears width and height roughly equal? The red shape from x about 60 to 180, y about 60 to 180 maybe "
+smoke: pass (chat ok, completion ok, tool ok, think-on ok, think-off ok, image ok)

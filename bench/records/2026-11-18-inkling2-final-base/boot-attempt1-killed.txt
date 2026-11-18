@@ -1,0 +1,4 @@
+# Boot attempt 1 (auto KV pool, GUARD_SWAP_AVAIL_MIB=16384): rank 0 killed by its guard at ready
+plan (rank 2): rexl3 event=tp_follower_plan rank=2 slots=4 kv_pages=22532 max_context=1048576 weights_gib=73.94 free_after_gib=42.06 identity=sha256:71d760435893535f318c51038935514e4e93fe5d58507edebc78c3a75cda5079
+2026-11-18T05:46:17Z rexl3 level=fatal event=memguard_kill rank=0 reason="swap grew 320 MiB > 64 MiB with MemAvailable 12973 MiB < 16384 MiB"
+Fix: KV_TOKENS defaults to SLOTS x MAX_MODEL_LEN (4,194,304) and GUARD_SWAP_AVAIL_MIB to the engine floor (8192).

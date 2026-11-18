@@ -9,7 +9,7 @@ MANIFEST_FILE=intake/manifest.tsv
 REXL3_UPSTREAM=https://github.com/REXL3/REXL3.git
 REXL3_UPSTREAM_BASE=06181b1d742912108361784257710806d9a75d18
 REXL3_FORK=https://github.com/justincasey/REXL3.git
-REXL3_COMMIT=b97ef4ee943067e4e9d4a1f15766a5fcfaf4de18   # `inkling2` head: the family host half (no forward yet)
+REXL3_COMMIT=f4e27caec70da060df2a923097fb750a0880a653   # `inkling2`: family, kernels, TP4, DSpark, prefix cache, vision
 RUST_TOOLCHAIN=1.89.0
 
 # NCCL every rank dlopens (REXL3_NCCL_LIB): the 2.30.7 build REXL3's measured TP runs used, already at this path on all
