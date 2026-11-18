@@ -1,0 +1,4 @@
+rexl3 event=inkling2_plan slots=4 max_context=1048576 kv_pages=4100 kv_tokens=1048576 kv_gib=4.54 lanes_at_max_context=1 weights_gib=73.94 free_after_gib=33.00 floor_gib=4.00 reserve_gib=6.00 state_mib_per_slot=67.7 kv_bytes_per_token=4644 kv_dtype=int8 drafter=dspark:plane=Int8 prefix_entries=2 prefix_pages=1723 prefix_gib=2.00 prefix_reach_tokens=441088 spare_gib=15.63 tower_gib=1.06 vision_reserve_gib=0.56
+rexl3 event=tp_rank_loaded rank=0 weights_gib=73.94 buffers_gib=3.07 load_s=88.9 mem_available_gib=21.0
+rexl3 event=prefix_cache_plan entries=2 pages=1723 gib=2.00 spare_gib=15.63 reach_tokens=441088 window=1048576 ranks=4
+rexl3 event=tp_vision_ready family=inkling2 tokens=4096

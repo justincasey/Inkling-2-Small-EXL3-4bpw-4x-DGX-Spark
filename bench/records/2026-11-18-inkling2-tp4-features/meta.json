@@ -1,0 +1,96 @@
+{
+ "name": "inkling2-tp4-features",
+ "date": "2026-11-18",
+ "recipe": {
+  "commit": "0a9f9b0d032f1c810df77cfc17380f80dc372d29",
+  "uncommitted_files": 9
+ },
+ "pack": {
+  "repo": "0xSero/Inkling-2-Small-EXL3-4bpw",
+  "revision": "996dc404c1feb3abd5330af8a3c52270ffe0008d",
+  "dir": "/home/spark/models/Inkling-2-Small-EXL3-4bpw"
+ },
+ "engine": {
+  "commit": "9351e27f494e33d3aea0559df116f9d071edcd03",
+  "sha256": "bc025c31a48e092c080ec6d246434c1f80d920a29b21b8cd5d3974586cfdd11b",
+  "pinned_commit": "b97ef4ee943067e4e9d4a1f15766a5fcfaf4de18",
+  "lab_build": true,
+  "upstream_base": "06181b1d742912108361784257710806d9a75d18",
+  "version": {
+   "version": "0.1.1",
+   "commit": "9351e27f494e33d3aea0559df116f9d071edcd03",
+   "system_fingerprint": "fp_9351e27f494e_388a0309_cb1311",
+   "nvcc": "13.0.88",
+   "cuda_arch": "sm_121",
+   "kernel_hash": "388a03099cb42bc4",
+   "cudart": "13.0",
+   "cuda_driver": "13.0",
+   "cublas": "13.1.1"
+  }
+ },
+ "nccl": {
+  "lib": "/home/spark/rexl3/lib/libnccl.so.2",
+  "sha256": "fc7ea66334edbc934aa25959b9907dbb2b91a1d2485beff18839afc45cbc08d0",
+  "env": [
+   "NCCL_SOCKET_IFNAME=enp1s0f1np1",
+   "NCCL_IB_HCA==rocep1s0f1:1,roceP2p1s0f1:1",
+   "NCCL_IB_GID_INDEX=3",
+   "NCCL_IB_TC=106",
+   "NCCL_MAX_NCHANNELS=4",
+   "NCCL_NET=IB",
+   "NCCL_IB_DISABLE=0",
+   "NCCL_IB_ADDR_FAMILY=AF_INET",
+   "NCCL_IB_ROCE_VERSION_NUM=2",
+   "NCCL_NET_PLUGIN=none",
+   "NCCL_DEBUG=WARN"
+  ]
+ },
+ "config": {
+  "PROFILE": "",
+  "SERVED_NAME": "inkling-2-small-exl3-4bpw-4x-dgx-spark",
+  "PORT": "8000",
+  "TP_PORT": "29571",
+  "MAX_MODEL_LEN": "1048576",
+  "SLOTS": "4",
+  "PREFILL_CHUNK": "4096",
+  "SPEC": "dspark",
+  "PREFIX_CACHE": "2048",
+  "VISION": "on",
+  "MEMORY_FLOOR_GIB": "4",
+  "EXTRA_FLAGS": "--kv-tokens 1048576",
+  "EXTRA_ENV": "",
+  "DUMP_DIR": "",
+  "GUARD_START_MIB": "2048",
+  "GUARD_MIB": "1024",
+  "GUARD_SWAP_MAX_MIB": "64",
+  "GUARD_SWAP_AVAIL_MIB": "16384",
+  "DROP_CACHES_EVERY_S": "20"
+ },
+ "ranks": [
+  {
+   "rank": 0,
+   "host": "192.168.1.121",
+   "fabric": "10.100.10.1",
+   "command": "exec env -i HOME=/home/spark USER=spark LOGNAME=spark PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin NCCL_SOCKET_IFNAME=enp1s0f1np1 NCCL_IB_HCA==rocep1s0f1:1\\,roceP2p1s0f1:1 NCCL_IB_GID_INDEX=3 NCCL_IB_TC=106 NCCL_MAX_NCHANNELS=4 NCCL_NET=IB NCCL_IB_DISABLE=0 NCCL_IB_ADDR_FAMILY=AF_INET NCCL_IB_ROCE_VERSION_NUM=2 NCCL_NET_PLUGIN=none NCCL_DEBUG=WARN REXL3_NCCL_LIB=/home/spark/rexl3/lib/libnccl.so.2 RUST_BACKTRACE=1 REXL3_MEMORY_FLOOR_GIB=4 /home/spark/inkling-2-small-exl3-4bpw-4x-dgx-spark/bin/rexl3-serve --model /home/spark/models/Inkling-2-Small-EXL3-4bpw --tp-ranks 4 --tp-rank 0 --tp-peer 10.100.10.1:29571 --max-model-len 1048576 --slots 4 --prefill-chunk 4096 --kv-dtype int8 --spec dspark --prefix-cache-mib 2048 --allow-unvalidated-pack --served-model-name inkling-2-small-exl3-4bpw-4x-dgx-spark --host 0.0.0.0 --port 8000 --kv-tokens 1048576"
+  },
+  {
+   "rank": 1,
+   "host": "192.168.1.122",
+   "fabric": "10.100.10.2",
+   "command": "exec env -i HOME=/home/spark USER=spark LOGNAME=spark PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin NCCL_SOCKET_IFNAME=enp1s0f1np1 NCCL_IB_HCA==rocep1s0f1:1\\,roceP2p1s0f1:1 NCCL_IB_GID_INDEX=3 NCCL_IB_TC=106 NCCL_MAX_NCHANNELS=4 NCCL_NET=IB NCCL_IB_DISABLE=0 NCCL_IB_ADDR_FAMILY=AF_INET NCCL_IB_ROCE_VERSION_NUM=2 NCCL_NET_PLUGIN=none NCCL_DEBUG=WARN REXL3_NCCL_LIB=/home/spark/rexl3/lib/libnccl.so.2 RUST_BACKTRACE=1 REXL3_MEMORY_FLOOR_GIB=4 /home/spark/inkling-2-small-exl3-4bpw-4x-dgx-spark/bin/rexl3-serve --model /home/spark/models/Inkling-2-Small-EXL3-4bpw --tp-ranks 4 --tp-rank 1 --tp-peer 10.100.10.1:29571 --max-model-len 1048576 --slots 4 --prefill-chunk 4096 --kv-dtype int8 --spec dspark --prefix-cache-mib 2048 --allow-unvalidated-pack --served-model-name inkling-2-small-exl3-4bpw-4x-dgx-spark --host 0.0.0.0 --port 8000 --kv-tokens 1048576"
+  },
+  {
+   "rank": 2,
+   "host": "192.168.1.123",
+   "fabric": "10.100.10.3",
+   "command": "exec env -i HOME=/home/spark USER=spark LOGNAME=spark PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin NCCL_SOCKET_IFNAME=enp1s0f1np1 NCCL_IB_HCA==rocep1s0f1:1\\,roceP2p1s0f1:1 NCCL_IB_GID_INDEX=3 NCCL_IB_TC=106 NCCL_MAX_NCHANNELS=4 NCCL_NET=IB NCCL_IB_DISABLE=0 NCCL_IB_ADDR_FAMILY=AF_INET NCCL_IB_ROCE_VERSION_NUM=2 NCCL_NET_PLUGIN=none NCCL_DEBUG=WARN REXL3_NCCL_LIB=/home/spark/rexl3/lib/libnccl.so.2 RUST_BACKTRACE=1 REXL3_MEMORY_FLOOR_GIB=4 /home/spark/inkling-2-small-exl3-4bpw-4x-dgx-spark/bin/rexl3-serve --model /home/spark/models/Inkling-2-Small-EXL3-4bpw --tp-ranks 4 --tp-rank 2 --tp-peer 10.100.10.1:29571 --max-model-len 1048576 --slots 4 --prefill-chunk 4096 --kv-dtype int8 --spec dspark --prefix-cache-mib 2048 --allow-unvalidated-pack --served-model-name inkling-2-small-exl3-4bpw-4x-dgx-spark --host 0.0.0.0 --port 8000 --kv-tokens 1048576"
+  },
+  {
+   "rank": 3,
+   "host": "192.168.1.18",
+   "fabric": "10.100.10.4",
+   "command": "exec env -i HOME=/home/spark USER=spark LOGNAME=spark PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin NCCL_SOCKET_IFNAME=enp1s0f1np1 NCCL_IB_HCA==rocep1s0f1:1\\,roceP2p1s0f1:1 NCCL_IB_GID_INDEX=3 NCCL_IB_TC=106 NCCL_MAX_NCHANNELS=4 NCCL_NET=IB NCCL_IB_DISABLE=0 NCCL_IB_ADDR_FAMILY=AF_INET NCCL_IB_ROCE_VERSION_NUM=2 NCCL_NET_PLUGIN=none NCCL_DEBUG=WARN REXL3_NCCL_LIB=/home/spark/rexl3/lib/libnccl.so.2 RUST_BACKTRACE=1 REXL3_MEMORY_FLOOR_GIB=4 /home/spark/inkling-2-small-exl3-4bpw-4x-dgx-spark/bin/rexl3-serve --model /home/spark/models/Inkling-2-Small-EXL3-4bpw --tp-ranks 4 --tp-rank 3 --tp-peer 10.100.10.1:29571 --max-model-len 1048576 --slots 4 --prefill-chunk 4096 --kv-dtype int8 --spec dspark --prefix-cache-mib 2048 --allow-unvalidated-pack --served-model-name inkling-2-small-exl3-4bpw-4x-dgx-spark --host 0.0.0.0 --port 8000 --kv-tokens 1048576"
+  }
+ ],
+ "results": []
+}
