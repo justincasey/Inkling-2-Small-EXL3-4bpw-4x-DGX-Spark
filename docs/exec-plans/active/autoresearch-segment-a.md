@@ -140,9 +140,7 @@ Revised order for Segment A (every item keeps arithmetic order, so `pin`, `spec`
 | 7 | Prefill: `plan_kernel` (1 CTA, 2.2 ms, 383 launches) parallelized | 0.8 s | about -0.7 s |
 | 8 | Prefill, 256K: global attention (`attn_kernel`, int8 dequant per tile): stage dequantized K/V tiles in shared memory per CTA group without changing the online-softmax order | 51.3 s of 240 s at 256K (21%); in the last chunks 1.5 s of each 4.4 s chunk, about 190 ms per global layer `[INFERENCE: local layers are cheap]` | up to -20 s at 256K if the kernel reaches 2x `[INFERENCE]`; grows with context |
 
-Measured (run #8, final HEAD `dc9b356`): `target_score` 0.552, decode 44.4 tok/s, prefill_32k 1,923. The original estimate of a Segment A
-ceiling (decode 55-60, prefill_32k 2,400-2,600, score 0.65-0.75) was not reached: the estimates above were upper bounds from the first
-profile, and items 2, 3 and 5 paid less than they assumed.
+Measured (run #10, final engine `b1c4de1`): `target_score` 0.572, decode 44.3 tok/s, prefill_32k 2,068, 1M prefill 814 (run #8 on `dc9b356`: 0.552 with 1,923). The original estimate of a Segment A ceiling (decode 55-60, prefill_32k 2,400-2,600, score 0.65-0.75) was not reached: the estimates above were upper bounds from the first profile, and items 2, 3 and 5 paid less than they assumed; the second kernel pass (runs #9 and #10) found +7% of prefill in two kernels the first pass had called near their peak.
 
 Status of each item (2026-11-19):
 
