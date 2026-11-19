@@ -14,7 +14,7 @@ Engine candidates: worktree `~/projects/rexl3-inkling2-ar` (branch `inkling2-ar`
 - [x] Segment A changes kept: runs #3 to #7 (Results, below); run #8 confirms the final HEAD; numbers are in
       `bench/records/2026-11-19-segment-a-final/`
 - [x] byte-for-byte logits check of `f4e27ca` against the final engine, lanes off and on (record, `bitwise-logits.txt`)
-- [x] 1M benchmark on the final engine (pin and memory PASS, 793 tok/s)
+- [x] 1M benchmark on `44cd901` (pin and memory PASS, 793 tok/s); to be re-run on the final engine of the second kernel pass
 - [ ] open items: "What is left" below (none started)
 
 ## Baseline (unmodified `f4e27ca`, eager, clocks locked at 2200 MHz)
@@ -214,6 +214,9 @@ run the 1M benchmark (`PHASES=prefill-1m`) and the byte-for-byte logits check (`
 | #5 | `e0ee556` | draft budget `BudgetPolicy::Curve` over a measured round-cost grid (`engine.rs` `round_cost`; one stream measured, two or more flat = every draft verified as before): prose 22.0 to 24.8, structured 26.4 to 28.5 tok/s | 0.5248 | 43.41 | 1,777 / 1,573 / 1,372 | 11/11 |
 | #6 | `8ee0fe3` | a prefill chunk of 1,024+ rows as two lanes (`Inkling2Rank::forward_lanes`): row views of the step buffers, layers interleaved A.pre B.pre A.mid B.mid, the four collectives of a layer on a comm stream under the other lane's compute | 0.5450 | 43.33 | 1,920 / 1,684 / 1,441 | 11/11 |
 | #7 | `44cd901` | `lin_narrow_kernel<NT>`: 8-column (thin) blocks when the 16-column grid would run under 4,096 warps (the decode small-n shapes and `w_o`, 150+ launches a round); each column's accumulation order is unchanged | 0.5520 | 44.37 | 1,923 / 1,686 / 1,439 | 11/11 |
+| #8 | `dc9b356` | final-HEAD confirmation after the env-gated logits-only dump: no performance change | 0.5519 | 44.35 | 1,923 / 1,686 / 1,443 | 11/11 |
+| #9 | `8aa5122` | MoE prefill: the A fragments one k step ahead (`kAp`) for the 4-bit MCG experts; same operands, same bits | 0.5572 | 44.25 | 1,965 / 1,716 / 1,465 | 11/11 |
+| #10 | `b1c4de1` | wide bf16 linear: `lin_wide2_kernel` (64-wide k stages, two buffers, `cp.async`, one barrier a stage) and row blocks walking the weight columns in groups of 8 (L2 reuse); same chunk order per output | 0.5718 | 44.27 | 2,068 / 1,798 / 1,524 | 11/11 |
 
 Lane profile (rank 0, cold 32K, 17.2 s, `--trace=cuda`): comm kernels 10.3 s of which 84% run under compute (1.7 s exposed); compute is 13.55 s on rank 0 and 16.0 s on rank 3 (experts E mod 4 give rank 3 about 12% more MoE rows), so the group is paced by rank 3. Splitting the rows makes the MoE kernels about 25% slower in total (gateup 2.0 ms per 2,048-row lane against 2.75 ms per 4,096-row chunk). Prefill is within about 7% of rank 3's compute: only kernel work helps from here.
 
@@ -224,6 +227,12 @@ Decode kernels left after run #7 (profile of `f4e27ca`, rank 0, per round, befor
 1M check of the lane engine (`f3bf927`, `PHASES=prefill-1m`, run `bench/runs/autoresearch-20261119-015435`): pin PASS at 1,008,317 tokens (byte-exact), memory PASS (rank 0 minimum 9.53 GiB against the 8 GiB floor), capacity 4 lanes at 1,048,576 tokens; prefill 1,271.9 s = 793 tok/s (baseline 688), decode after it 27.3 tok/s. The same check on the final engine `44cd901` (run `bench/runs/autoresearch-20261119-025735`): pin PASS, memory PASS (minimum 9.83 GiB normalized), 4 lanes, 793 tok/s, decode 27.55 tok/s. Run #7's installed build was `2a6ba1d`, the same tree as `44cd901` (the commit was amended for its message only).
 
 Decode idle (rank 0, 7.9 s of decode): 425 ms of gaps between kernels, 315 ms of them in 121,000 gaps under 5 us and under 2 ms of host-side gaps above 100 us, so CUDA graphs are worth at most about 2% of a round.
+
+Kernel findings of the second pass (ncu with root counters, `sudo -n`, on the real-layer benches `bench_real_moe_layer` and `bench_inkling2_ops`; both are `#[ignore]`, run on rank 0 with `REXL3_INKLING2_DIR` and `REXL3_INKLING2_RANK=0`):
+- MoE prefill `gateup` (4-tile groups): tensor pipe 46%, L2 47%, issue slots 30%, one 8-warp block an SM (224 registers, 82 KB shared): latency-bound, not decode-bound (removing the trellis decode saved 9%, the block reduce 3%, both within a noisy bench). Prefetching the A fragments one step ahead for the MCG codebook (the other codebooks had it) took a real layer of 4,096 rows from 18.7-19.4 to 17.9 ms: run #9. Weight prefetch deeper than one step (per group size, at 2,048 and 4,096 rows) did nothing. `rot_in` is near its DRAM bound (about 230 MB moved in 1.3 ms); a grid-stride launch took 1.43 to 1.31 ms: dropped.
+- In lane mode (2,048 rows a lane, about 42 pairs an expert) the MoE reads each expert's weights twice a chunk-layer: about 2.8 GB, 11.6 ms at 237 GB/s of the 15.9 ms the gate/up and down kernels take; the lane penalty on the MoE is about 4.4 ms a chunk-layer. A fused group list (one launch, an expert's groups adjacent; branch `lab/fused-groups` of the engine worktree) gained 0.5-0.9 ms in the 4,096-row bench and nothing in the engine (1,965.6 against 1,966.9), because a lane has about one group an expert. A joint MoE for both lanes (one weight pass) would save about 4.4 ms and expose about 2.5 ms more of the all-reduces: an estimated +0 to +5% of prefill, not built. 8,192-row chunks would halve the weight passes, but the engine caps rows at 4,096 and the extra buffers (about 2 GB) would come out of the prefix cache and fail the memory gate.
+- `lin_wide`: 3.10 s of the 32K lane prefill on rank 0, 1.87 s of it one launch a layer-lane of n=3,328 x k=4,608 at 23 TFLOP/s. In isolation that shape ran at 38 TFLOP/s against 50-60 for the 1,536-column shapes: the plain grid order read the 30.7 MB weight matrix once per row block (past L2). Row blocks walking the weight columns in groups of 8 took it from 1,649 to 1,184 us (2,048 rows); staging alone gave -15% on the q-like shapes and -25% on the router shape, nothing on `w_o` (75 MB of fp32 output): run #10.
+- Decode MoE gemv at 8 rows: about 111 MB in 0.43 ms, about 95% of the DRAM peak: nothing to win.
 
 Measured and dropped: NCCL `PROTO` LL / LL128, `MAX_NCHANNELS` 2 / 8, `P2P_NET_CHUNKSIZE` 256K / 512K / 1M (all within noise); `lin_narrow` unroll 4 (+0.9%, noise); a highest-priority comm stream (no effect); the Curve estimator's decay 0.97 with prior weight 2 to 4 (+0.5 to 0.6%, noise level).
 

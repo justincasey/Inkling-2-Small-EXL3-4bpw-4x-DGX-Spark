@@ -212,6 +212,32 @@
     {
       "file": "bitwise-logits.txt",
       "what": "byte-for-byte logits comparison of f4e27ca against the final engine, lanes off and on"
+    },
+    {
+      "dir": "harness-runs/run09-8aa5122-moe-ap",
+      "harness_run": "autoresearch-20261119-050516",
+      "engine": "6f04cbc (change 8aa5122)",
+      "what": "MoE prefill A fragments one step ahead, score 0.5572",
+      "files": [
+        "metrics.txt",
+        "gates.txt",
+        "capacity.log",
+        "memwatch.txt",
+        "bench-main.json"
+      ]
+    },
+    {
+      "dir": "harness-runs/run10-b1c4de1-wide2",
+      "harness_run": "autoresearch-20261119-055347",
+      "engine": "b1c4de1",
+      "what": "staged wide linear with L2-grouped blocks, score 0.5718",
+      "files": [
+        "metrics.txt",
+        "gates.txt",
+        "capacity.log",
+        "memwatch.txt",
+        "bench-main.json"
+      ]
     }
   ]
 }
