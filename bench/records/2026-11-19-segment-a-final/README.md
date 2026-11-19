@@ -1,6 +1,6 @@
 # Segment A (bit-preserving speed), final state
 
-`meta.json`: the installed final engine (dc9b356, a lab build off the pinned f4e27ca). `runs/`: each kept harness run of the session
+`meta.json`: the installed final engine (dc9b356, a lab build off the pinned f4e27ca). `harness-runs/`: each kept harness run of the session
 (`./autoresearch.sh`, `bench/runs/autoresearch-*`, gitignored) with its metrics, gates, capacity plan, memwatch and the raw bench data;
 `bitwise-logits.txt`: the byte-for-byte logits check. The numbers quoted in `docs/exec-plans/active/autoresearch-segment-a.md`,
 `docs/AUTORESEARCH-HANDOFF.md` and the README come from these files.

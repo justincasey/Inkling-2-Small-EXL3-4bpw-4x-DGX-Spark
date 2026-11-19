@@ -95,7 +95,7 @@
   ],
   "results": [
     {
-      "dir": "runs/run02-baseline-f4e27ca",
+      "dir": "harness-runs/run02-baseline-f4e27ca",
       "harness_run": "autoresearch-20261118-212955",
       "engine": "f4e27ca",
       "what": "baseline, score 0.4422",
@@ -108,7 +108,7 @@
       ]
     },
     {
-      "dir": "runs/run03-8bd0ed5-rsag",
+      "dir": "harness-runs/run03-8bd0ed5-rsag",
       "harness_run": "autoresearch-20261118-221410",
       "engine": "8bd0ed5",
       "what": "prefill all-reduce as reduce-scatter + all-gather, score 0.5071",
@@ -121,7 +121,7 @@
       ]
     },
     {
-      "dir": "runs/run04-50bdb1f-plan",
+      "dir": "harness-runs/run04-50bdb1f-plan",
       "harness_run": "autoresearch-20261118-225257",
       "engine": "50bdb1f",
       "what": "parallel MoE plan, score 0.5160",
@@ -134,7 +134,7 @@
       ]
     },
     {
-      "dir": "runs/run05-e0ee556-curve",
+      "dir": "harness-runs/run05-e0ee556-curve",
       "harness_run": "autoresearch-20261119-000959",
       "engine": "e0ee556",
       "what": "Curve draft budget, score 0.5248",
@@ -147,7 +147,7 @@
       ]
     },
     {
-      "dir": "runs/run06-f3bf927-lanes",
+      "dir": "harness-runs/run06-f3bf927-lanes",
       "harness_run": "autoresearch-20261119-012603",
       "engine": "f3bf927 (change 8ee0fe3)",
       "what": "two-lane prefill, score 0.5450",
@@ -160,7 +160,7 @@
       ]
     },
     {
-      "dir": "runs/run07-thin-tiles",
+      "dir": "harness-runs/run07-thin-tiles",
       "harness_run": "autoresearch-20261119-023138",
       "engine": "2a6ba1d (same tree as 44cd901)",
       "what": "thin lin_narrow tiles, score 0.5520",
@@ -173,7 +173,7 @@
       ]
     },
     {
-      "dir": "runs/run08-dc9b356-final",
+      "dir": "harness-runs/run08-dc9b356-final",
       "harness_run": "autoresearch-20261119-034255",
       "engine": "dc9b356",
       "what": "final HEAD, score 0.5519",
@@ -186,7 +186,7 @@
       ]
     },
     {
-      "dir": "runs/1m-f3bf927",
+      "dir": "harness-runs/1m-f3bf927",
       "harness_run": "autoresearch-20261119-015435",
       "engine": "f3bf927",
       "what": "prefill-1m screen (lane engine before thin tiles), score 0 by design",
@@ -198,7 +198,7 @@
       ]
     },
     {
-      "dir": "runs/1m-44cd901",
+      "dir": "harness-runs/1m-44cd901",
       "harness_run": "autoresearch-20261119-025735",
       "engine": "44cd901",
       "what": "prefill-1m screen on the final code, score 0 by design",
