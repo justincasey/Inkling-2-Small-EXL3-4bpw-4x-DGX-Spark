@@ -80,16 +80,23 @@ correctness gates, and prints `METRIC` lines. `target_score` is 0 unless every g
 ```bash
 ./inkling2.sh stop-other                 # once per session, if the DeepSeek stack holds the GPUs; restore-other at the end
 PIN=1 ./autoresearch.sh                  # on the unmodified pinned engine only: writes or extends the two reference files
-./autoresearch.sh                        # a full run (about 29 minutes; no 1M prefill)
+./autoresearch.sh                        # a full run (about 25 minutes; no 1M prefill)
 PHASES=warm,prefill-32k ./autoresearch.sh  # a screen: raw numbers, target_score 0 (also warm,decode and warm,prefill)
 PHASES=prefill-1m ./autoresearch.sh      # the 1M-token prefill benchmark (about 25 minutes), a screen
 ```
 
 Scope: bit-preserving work only. The `oracle` gate (bit-changing kernel work) is not wired in; see the script's header.
 
+Segment A result (record `bench/records/2026-11-19-segment-a-final/`, engine `dc9b356` against the pinned `f4e27ca`, all 11 gates): `target_score` 0.4422 to
+0.5519, decode (mean of four prompt types, one request) 42.2 to 44.4 tok/s, cold prefill at 32K / 128K / 256K 1,298 / 1,199 / 1,080 to 1,923 / 1,686 / 1,443 tok/s,
+cold 1M prefill 689 to 793 tok/s (4 x 1,048,576-token lanes, memory gate passed). Every row's logits of a 9,292-token prompt are byte-identical
+to the pinned engine's on all four ranks (`bitwise-logits.txt`). The 70 tok/s and 4,000 tok/s targets are not met.
+
 ## Known gaps (next phase)
 
-- Decode runs eagerly (no CUDA graphs); no kernel tuning was done. Targets and ceilings: `docs/ROOFLINE.md`.
+- Decode runs eagerly (CUDA graphs would save at most about 2%: the idle time is 2.6 us launch gaps). Segment A (bit-preserving) work
+  is recorded in `bench/records/2026-11-19-segment-a-final/` and `docs/exec-plans/active/autoresearch-segment-a.md`, with the open items.
+  Targets and ceilings: `docs/ROOFLINE.md`.
 - `prompt_logprobs` is not served.
 - The pack's fingerprint is not in REXL3's validated list (`--allow-unvalidated-pack`).
 - REXL3 refuses `json_schema` / `json_object` response formats.

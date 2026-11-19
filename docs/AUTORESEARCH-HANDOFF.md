@@ -147,10 +147,11 @@ Baseline of the unmodified engine (segment 1 run #1, the pin runs, one validatio
 689 (1,463 s, benchmark only), `decode_c4` 52.1, `decode_c8` 57-64 (noisy, not scored), decode at 32K / 128K / 256K / 1M
 context 40.4 / 31.8 / 37.6 / 28.1, `target_score_raw` 0.443. Spread over the runs so far: `decode_c1_tok_s` 42.06-42.44
 (0.9%, seven runs), `prefill_32k_tok_s` 1,297.8-1,304.2 (0.5%, five runs). The first 0.6% and 0.02% figures came from
-fewer runs and were too tight: a gain under about 1% decode or 0.5% prefill is noise.
+fewer runs and were too tight: a gain under about 1% decode or 0.5% prefill is noise. Only the segment 2 baseline run (#2) has its files in a
+record (`bench/records/2026-11-19-segment-a-final/harness-runs/run02-baseline-f4e27ca`); the other baseline runs behind the spread are not recorded.
 
 **Segment 2 (user, 2026-11-18): routine runs stop at 256K.** The 1M prefill was 24 of a full run's 49 minutes. A full run is
-now every phase but `prefill-1m` and takes 29 minutes (the segment 2 baseline: 1,719 s); the `prefill` phase is cold 32K,
+now every phase but `prefill-1m` and takes 29 minutes (the segment 2 baseline: 1,719 s; 1,458 s on the final engine, whose prefill is faster); the `prefill` phase is cold 32K,
 128K and 256K. Screens: `PHASES=warm,prefill-32k` (32K only), `warm,prefill` (about 12 minutes with the boot),
 `warm,decode`. The largest contexts are benchmarked later with `PHASES=prefill-1m ./autoresearch.sh` (a screen, score 0).
 The 256K reply stops at 125 tokens (`stop`), so `decode_ctx256k_tok_s` rests on few tokens. The 256K prompt goes as
@@ -234,7 +235,8 @@ measurements, not at the end.
 1. `./inkling2.sh stop-other`, then `doctor`, `build` (pinned `f4e27ca`), `start`, `smoke`.
 2. Write `autoresearch.sh` plus `bench/tools/bench.py` per §3.
 3. Pin `bench/reference.json` on the unmodified engine.
-4. Run the baseline: full run three times, interleaved boots; record noise per metric.
+4. Run the baseline: full run three times, interleaved boots; record noise per metric. (Done differently: the baseline is segment 1 run #1, the
+   pin runs, one validation run and segment 2 run #2, one full run each, not three interleaved boots; see section 3a for the spread.)
 5. Profile one decode step and one 32K prefill with nsys on all ranks (graphs off), and attribute time to MoE,
    attention, linears, collectives, host and the drafter. Write the profile into the exec plan before choosing the
    first idea.
