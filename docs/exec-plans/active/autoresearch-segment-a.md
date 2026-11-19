@@ -110,9 +110,10 @@ What it would buy, from the profile:
 - tensor-core MoE prefill for this pack's codebook (`glm_p2_moe.cu` variant): the 4.8 s MoE part of the prefill, 19.6%;
 - requantizing the BF16 attention weights to EXL3 in a new pack: `lin_narrow` 22.4 ms per round to roughly 6-8 ms (4 bpw is a quarter
   of the bf16 bytes; 52% of a token's weight bytes), the serial ceiling from 46 to about 70 tok/s (handoff §5);
-- another attention merge order: attention is only 4.7% of the prefill at 32K and 1.6% of a decode round: low value.
+- another attention merge order: attention is only 4.7% of the prefill at 32K and 1.6% of a decode round (low value there; its
+  share at 256K is not profiled yet).
 
-Until the user decides, the loop stays in Segment A.
+The loop stays in Segment A; ask again before any Segment B work.
 
 ## What to do first
 
