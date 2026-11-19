@@ -9,24 +9,29 @@ from the HTTP middleware's entry to the first engine token batch, i.e. the prefi
 (completion_tokens - 1) / (e2e - ttft), e2e being the server's `rexl3_request_e2e_seconds` (entry to the end of
 generation) read the same way; the client's wall clock is only recorded.
 
-  --phases warm,decode,conc,prefill,prefill-1m     (default: all but warm and prefill-1m; autoresearch.sh passes its own)
+  --phases warm,decode,conc,prefill-32k,prefill,prefill-1m     (default: decode,conc,prefill; autoresearch.sh passes its own)
   warm         discarded: the decode prompts at 128 tokens, four at once, and one cold 32K prefill
   decode       c = 1 over four prompt types (prose, code, structured, json; 512 tokens each), DSpark as booted.
                decode_c1_tok_s is the mean of the four per-type rates; decode_acceptance and decode_tokens_per_round
                come from usage.spec
   conc         the same prompts at c = 4 (each once) and c = 8 (each twice): aggregate completion tokens over the wall
                span. The server runs 4 slots, so c = 8 is two waves of 4. Every reply must equal its solo reply
-  prefill      one cold 32,768-token prompt and one cold 131,072-token prompt (128 generated tokens each):
-               prefill_<n>k_tok_s = prompt_tokens / ttft, and the decode speed at that context
-  prefill-1m   one cold 1,000,000-token prompt (128 generated tokens): prefill_1m_tok_s and decode_ctx1m_tok_s
+  prefill-32k  one cold 32,768-token prompt (128 generated tokens): the quick prefill screen
+  prefill      cold 32,768-, 131,072- and 262,144-token prompts, one at a time (128 generated tokens each):
+               prefill_<n>k_tok_s = prompt_tokens / ttft, and the decode speed at that context (decode_ctx<n>k_tok_s).
+               262,144 (256K) is the largest context of a routine run
+  prefill-1m   one cold 1,000,000-token prompt (128 generated tokens): prefill_1m_tok_s and decode_ctx1m_tok_s. About 25 minutes:
+               never part of a routine run, a benchmark of the largest context (PHASES=prefill-1m ./autoresearch.sh)
 
-Pinned replies. `--pin PATH` writes every reply of the run (generated ids and finish reason per named request) as the
-reference; PATH must not exist (pin once, from the unmodified engine). Every other run compares each reply it produced
-with `--ref PATH` byte for byte: `PASS pin` when all equal, otherwise `FAIL pin ...` lines and exit 1. A screen (a
-subset of phases) compares what it ran. A pin run also requires every concurrent reply to equal its solo reply.
+Pinned replies. `--pin PATH` pins the replies of this run (generated ids and finish reason per named request): it writes PATH,
+or, when PATH exists, extends it: every entry already in it must be reproduced byte for byte (a difference fails the run and
+leaves PATH unchanged) and entries not in it yet are added, recorded under meta.extended. Pin only on the unmodified engine.
+Every other run compares each reply it produced with `--ref PATH` byte for byte: `PASS pin` when all equal, otherwise
+`FAIL pin ...` lines and exit 1. A screen (a subset of phases) compares what it ran. A pin run also requires every concurrent
+reply to equal its solo reply.
 
 Prompts are fixed texts (DECODE_TEXTS) and a long filler stream built from inkling_api.filler_sentences blocks (a seed
-each): ids for the 32K and 128K prompts (tokenized block by block through the server's /tokenize), text for the 1M one
+each): ids for the 32K, 128K and 256K prompts (tokenized block by block through the server's /tokenize), text for the 1M one
 (the server refuses a body of more than 300,000 JSON nodes, so a million ids cannot be sent; its real size is
 usage.prompt_tokens). A pinned reply records the sha256 of the prompt as defined (its ids, or its text).
 """
@@ -51,10 +56,10 @@ TTFT = "rexl3_request_ttft_seconds"
 E2E = "rexl3_request_e2e_seconds"
 DECODE_TOKENS = 512
 LONG_TOKENS = 128
-SIZES = {"32k": 32_768, "128k": 131_072, "1m": 1_000_000}
+SIZES = {"32k": 32_768, "128k": 131_072, "256k": 262_144, "1m": 1_000_000}
 BLOCK_SENTENCES = 800
 SUFFIX = "\n\nQuestion: Which three people appear most often in the notes above?\nAnswer:"
-PHASES = ("warm", "decode", "conc", "prefill", "prefill-1m")
+PHASES = ("warm", "decode", "conc", "prefill-32k", "prefill", "prefill-1m")
 DEFAULT_PHASES = "decode,conc,prefill"
 
 DECODE_TEXTS = {
@@ -247,6 +252,23 @@ def check_pinned(replies: dict[str, dict], ref: dict[str, dict]) -> list[str]:
     return out
 
 
+def extend_reference(ref: dict[str, dict], replies: dict[str, dict]) -> tuple[dict[str, dict], list[str]]:
+    """The reference after a pin run: every entry already pinned must be reproduced byte for byte (else a difference is
+    returned and the caller must not write), entries not pinned yet are added. Concurrent replies are never pinned: each was
+    already held to the solo reply of its prompt."""
+    merged, errs = dict(ref), []
+    for key, r in replies.items():
+        if key.startswith("conc"):
+            continue
+        if key in ref:
+            d = first_diff(key, reply_key(r), ref[key])
+            if d:
+                errs.append(d)
+        else:
+            merged[key] = {**reply_key(r), "prompt_tokens": r["prompt_tokens"]}
+    return merged, errs
+
+
 # ── phases ──
 def phase_warm(api: ia.Api, prompts: dict[str, list[int]]) -> None:
     jobs = [(n, ids, 128) for n, ids in prompts.items()]
@@ -317,19 +339,21 @@ def main(argv=None) -> int:
     ap.add_argument("--out", help="write every reply and timing here (JSON)")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--ref", help="compare every reply with this pinned reference")
-    g.add_argument("--pin", help="write the replies of this run as the reference (the file must not exist)")
+    g.add_argument("--pin", help="pin the replies of this run: write the reference, or extend an existing one (see above)")
     ap.add_argument("--engine", default="", help="engine commit, stored in a pin's meta")
     a = ap.parse_args(argv)
     phases = [p for p in a.phases.split(",") if p]
     bad = [p for p in phases if p not in PHASES]
     if bad:
         raise SystemExit(f"unknown phase(s) {bad}; known: {', '.join(PHASES)}")
-    if a.pin and os.path.exists(a.pin):
-        raise SystemExit(f"{a.pin} exists: the reference is pinned once, from the unmodified engine")
-    ref = None
+    ref, existing, old_meta = None, {}, None
     if a.ref:
         with open(a.ref) as f:
             ref = json.load(f)["replies"]
+    elif os.path.exists(a.pin):
+        with open(a.pin) as f:
+            old = json.load(f)
+        existing, old_meta = old["replies"], old["meta"]
 
     api = ia.api_from_args(a)
     prompts = {n: api.tokenize(t) for n, t in DECODE_TEXTS.items()}
@@ -342,24 +366,31 @@ def main(argv=None) -> int:
         phase_decode(api, prompts, replies, metrics, raw)
     if "conc" in phases:
         phase_conc(api, prompts, replies, metrics, raw, bool(a.pin))
-    if "prefill" in phases:
-        phase_long(api, "32k", replies, metrics, raw)
-        phase_long(api, "128k", replies, metrics, raw)
+    for label in ("32k", "128k", "256k"):
+        if "prefill" in phases or (label == "32k" and "prefill-32k" in phases):
+            phase_long(api, label, replies, metrics, raw)
     if "prefill-1m" in phases:
         phase_long(api, "1m", replies, metrics, raw)
 
     if a.pin:
-        # the reference holds the solo and long replies; a concurrent reply was already required to equal its solo one
-        pinned = {k: {**reply_key(r), "prompt_tokens": r["prompt_tokens"]} for k, r in replies.items()
-                  if not k.startswith("conc")}
-        rec = {"meta": {"engine": a.engine, "phases": phases, "decode_tokens": DECODE_TOKENS, "long_tokens": LONG_TOKENS,
-                        "prompt_version": PROMPT_VERSION, "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
-               "replies": pinned}
+        # the reference holds the solo and long replies; a concurrent reply was already required to equal its solo one.
+        # A pinned entry must be reproduced byte for byte; an entry not pinned yet is added (a new phase's first pin).
+        before = len(existing)
+        reproduced = sum(1 for k in replies if k in existing)
+        pinned, errs = extend_reference(existing, replies)
+        for e in errs:
+            fail(f"pin run: {e}")
+        added = sorted(set(pinned) - set(existing))
         if not FAILS:
+            meta = old_meta or {"engine": a.engine, "decode_tokens": DECODE_TOKENS, "long_tokens": LONG_TOKENS,
+                                "prompt_version": PROMPT_VERSION, "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+            if added and before:
+                meta.setdefault("extended", []).append({"engine": a.engine, "added": added,
+                                                       "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
             with open(a.pin, "w") as f:
-                json.dump(rec, f, indent=1)
+                json.dump({"meta": meta, "replies": pinned}, f, indent=1)
                 f.write("\n")
-            say(f"pinned {len(pinned)} replies -> {a.pin}")
+            say(f"{a.pin}: {len(pinned)} replies pinned, added {added or 'none'}; {reproduced} already pinned ones reproduced")
     else:
         # a concurrent reply answers the same prompt as its solo one, so it is held to that pinned reply
         for e in check_pinned(replies, ref):

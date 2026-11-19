@@ -97,6 +97,26 @@ def test_hist() -> None:
     print("ok   server histogram read: sum/count, missing series stops the run")
 
 
+def test_extend_reference() -> None:
+    ref = {"decode/json": {**rep([1, 2]), "prompt_tokens": 9}, "prefill/32k": {**rep([3]), "prompt_tokens": 32768}}
+    run = {"decode/json": {**rep([1, 2]), "prompt_tokens": 9, "ttft_s": 1.0}, "conc4/json#0": rep([1, 2]),
+           "prefill/256k": {**rep([7, 8], sha="c" * 64), "prompt_tokens": 262144, "wall_s": 3.0}}
+    merged, errs = bench.extend_reference(ref, run)
+    check(not errs and set(merged) == {"decode/json", "prefill/32k", "prefill/256k"}, f"new entry added, old kept: {errs} {set(merged)}")
+    check(merged["prefill/256k"] == {**rep([7, 8], sha="c" * 64), "prompt_tokens": 262144},
+          f"only the pinned fields of a reply are kept: {merged['prefill/256k']}")
+    check(set(ref) == {"decode/json", "prefill/32k"}, "the input reference is not modified")
+    bad = {**run, "decode/json": {**rep([1, 9]), "prompt_tokens": 9}}
+    merged, errs = bench.extend_reference(ref, bad)
+    check(len(errs) == 1 and errs[0].startswith("decode/json: generated ids differ at 1"),
+          f"an already pinned entry that is not reproduced is an error: {errs}")
+    merged, errs = bench.extend_reference(ref, {"conc8/json#1": rep([5])})
+    check(not errs and merged == ref, f"concurrent replies are never pinned: {errs} {merged}")
+    merged, errs = bench.extend_reference({}, run)
+    check(not errs and set(merged) == {"decode/json", "prefill/256k"}, f"a first pin writes every solo entry: {set(merged)}")
+    print("ok   pin extension: a new entry is added, a pinned one must be reproduced, concurrent replies are not pinned")
+
+
 def memwatch(mins, guard="running") -> str:
     return "\n".join(
         f"[r{r}] memwatch rank={r} guard={guard} window=none window_min_mib=n/a loading_min_mib={m} ready_min_mib={m} "
@@ -135,6 +155,7 @@ def main() -> int:
     test_score()
     test_pin()
     test_hist()
+    test_extend_reference()
     test_memcheck()
     return 0
 

@@ -3,10 +3,10 @@
 # printed as `METRIC name=value` lines. Exits 0 when every gate that ran passed, non-zero on a failed gate, boot, build or
 # clock check. Segment A of docs/AUTORESEARCH-HANDOFF.md: strictly bit-preserving work (see "Not in this harness").
 #
-#   CANDIDATE_SRC=~/projects/rexl3-inkling2-ar ./autoresearch.sh        a full run: every phase, a score
+#   CANDIDATE_SRC=~/projects/rexl3-inkling2-ar ./autoresearch.sh        a full run: every phase but prefill-1m, a score
 #   PHASES=warm,decode ./autoresearch.sh                                a screen: those phases only, target_score 0
-#   PIN=1 ./autoresearch.sh                                             pin bench/reference.json and
-#                                                                       bench/reference-vision.json (once, see below)
+#   PIN=1 ./autoresearch.sh                                             pin or extend bench/reference.json and
+#                                                                       bench/reference-vision.json (unmodified engine only)
 #
 # The candidate is the HEAD commit of the engine checkout CANDIDATE_SRC (default ~/projects/rexl3-inkling2-ar, branch
 # `inkling2-ar` off `inkling2` @ f4e27ca); its tracked files must be clean, because the build ships the commit. It is built
@@ -16,12 +16,14 @@
 # `./inkling2.sh stop-other` first and `restore-other` when the session ends (the handoff's rule); this script stops only
 # its own engine, before and after.
 #
-# Phases (PHASES, comma list; unset = all of them, the only way to get a score), in the order they run:
+# Phases (PHASES, comma list; unset = a full run: every phase below except prefill-1m, the only way to get a score), in order:
 #   host, goldens        engine stopped: `inkling2.sh engine-test host|goldens` on rank 0 from the installed source
 #   boot A               PREFILL_CHUNK as in .env.example (4096); capacity line, memwatch window, clock/memory sampling
-#   smoke, warm, decode, conc, prefill      bench/tools/bench.py (see its header): decode c = 1 / 4 / 8, cold 32K and 128K prefill
+#   smoke, warm, decode, conc, prefill      bench/tools/bench.py (see its header): decode c = 1 / 4 / 8, cold 32K, 128K and 256K prefill
+#   prefill-32k          a quick screen alone: the cold 32K prefill only (a full run has `prefill`, which includes it)
 #   vision, spec, cache  bench/tools/gates.py;  chunk: exactness record of boot A;  needle: 200K needle
-#   prefill-1m           bench.py, one cold 1,000,000-token prompt (about 30 minutes today): last, on boot A
+#   prefill-1m           not in a full run (about 25 minutes; user 2026-11-18: routine runs stop at 256K, the largest contexts are
+#                        benchmarked later): PHASES=prefill-1m ./autoresearch.sh, a screen with target_score 0, one cold 1M prompt
 #   boot B               only for `chunk`: PREFILL_CHUNK=1000, exactness record, diff against boot A's
 #
 # Primary metric target_score (higher is better; 1.0 = both user targets met on 4 lanes of 1M):
@@ -30,7 +32,7 @@
 # metric of bench.py, boot_s, kv_tokens, free_after_gib, prefix_gib, mem_min_gib / mem_min_gib_norm (per rank raw too), gpu_clock_mhz_*.
 #
 # Fixed gates (each prints `PASS <id>` or `FAIL <id>`, matched whole-line by bench/tools/score.py; a log per id in the run dir):
-#   pin        every bench.py reply (decode x4, concurrent x4 and x8, cold 32K / 128K / 1M) equals bench/reference.json byte for byte
+#   pin        every bench.py reply (decode x4, concurrent x4 and x8, cold 32K / 128K / 256K, and 1M when run) equals bench/reference.json byte for byte
 #   spec       gates.py spec: drafted == serial, concurrent == solo
 #   cache      gates.py cache: cached == uncached
 #   chunk      exactness.py record at prefill chunk 4096 (boot A) and 1000 (boot B), identical
@@ -43,8 +45,9 @@
 #   host       the engine's Inkling 2 host tests (gb-model, gb-cuda, gb-server) compile and pass
 #   goldens    testdata/gpu is byte-identical to the pinned engine's, and the five Inkling 2 GPU golden tests pass
 #
-# Reference replies. `PIN=1` runs the workload on the engine under test and writes the references; it is only for the
-# unmodified pinned engine (config/pins.sh REXL3_COMMIT) and refuses to overwrite: pin once, then commit both files.
+# Reference replies. `PIN=1` runs the workload on the engine under test and writes the references, or extends them with entries they
+# lack (the 256K prefill, 2026-11-18) while requiring every entry already pinned to be reproduced byte for byte (the vision reference
+# is compared when it exists). Only for the unmodified pinned engine (config/pins.sh REXL3_COMMIT); pin once per entry, then commit.
 # Off limits for the loop: oracle/, bench/reference*.json once pinned, bench/tools/gates.py thresholds, config/pins.sh pack
 # pins, config/pack-ranks.tsv, the memory guard's floors (scripts/memguard.sh, GUARD_* and MEMORY_FLOOR_GIB defaults).
 #
@@ -61,7 +64,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-PHASES_KNOWN="warm decode conc prefill prefill-1m smoke vision spec cache chunk needle host goldens"
+PHASES_KNOWN="warm decode conc prefill-32k prefill prefill-1m smoke vision spec cache chunk needle host goldens"
 REQUIRED_GATES="pin spec cache chunk vision needle capacity memory smoke host goldens"
 REF=bench/reference.json
 REF_VISION=bench/reference-vision.json
@@ -178,7 +181,7 @@ goldens_gate() {
 
 vision_gate() {
   timeout 1800 python3 bench/tools/gates.py vision "$RUN/vision.json" || return 1
-  if [[ -n $PIN ]]; then cp "$RUN/vision.json" "$REF_VISION"; echo "pinned $REF_VISION"
+  if [[ -n $PIN && ! -e $REF_VISION ]]; then cp "$RUN/vision.json" "$REF_VISION"; echo "pinned $REF_VISION"
   else python3 bench/tools/gates.py diff "$REF_VISION" "$RUN/vision.json"; fi
 }
 
@@ -232,9 +235,8 @@ setup() {
   export REXL3_SRC=$CAND
   if [[ -n $PIN ]]; then
     [[ $SHA == "$PINNED" ]] || die "PIN=1 is for the unmodified pinned engine ${PINNED:0:12}; $CAND is at ${SHA:0:12}" 2
-    [[ ! -e $REF && ! -e $REF_VISION ]] || die "$REF or $REF_VISION exists: the references are pinned once" 2
   else
-    for p in warm decode conc prefill prefill-1m; do if has "$p"; then need_ref=1; fi; done
+    for p in warm decode conc prefill-32k prefill prefill-1m; do if has "$p"; then need_ref=1; fi; done
     if (( need_ref )) && [[ ! -e $REF ]]; then die "no $REF: pin it once with PIN=1 on the unmodified engine" 2; fi
     if has vision && [[ ! -e $REF_VISION ]]; then die "no $REF_VISION: pin it once with PIN=1 on the unmodified engine" 2; fi
   fi
@@ -261,7 +263,7 @@ cluster_ready() {
 }
 
 run_all() {
-  PHASES_ALL="host,goldens,smoke,warm,decode,conc,prefill,vision,spec,cache,chunk,needle,prefill-1m"
+  PHASES_ALL="host,goldens,smoke,warm,decode,conc,prefill,vision,spec,cache,chunk,needle"
   BENCH_RAN=0; BENCH_RC=0; BOOTED=""; SAMPLER_PID=""; PRINTED=""; BOOT_A_S=0
   setup
   trap cleanup EXIT
@@ -271,7 +273,7 @@ run_all() {
   if has goldens; then gate goldens goldens_gate; fi
 
   local p need_boot=0
-  for p in smoke warm decode conc prefill prefill-1m vision spec cache chunk needle; do if has "$p"; then need_boot=1; fi; done
+  for p in smoke warm decode conc prefill-32k prefill prefill-1m vision spec cache chunk needle; do if has "$p"; then need_boot=1; fi; done
   if (( need_boot )); then
     boot a
     BOOT_A_S=$BOOT_S
@@ -296,7 +298,7 @@ boot_a_phases() {
     if timeout 3600 python3 bench/tools/exactness.py record "$RUN/exactness-chunk4096.json" --label chunk4096 > "$RUN/chunk4096.log" 2>&1; then chunk_a_ok=1
     else tail -n 20 "$RUN/chunk4096.log" >&2; echo "FAIL chunk" | tee -a "$GATES"; fi
   fi
-  for p in warm decode conc prefill; do if has "$p"; then ph+="$p,"; fi; done
+  for p in warm decode conc prefill-32k prefill; do if has "$p"; then ph+="$p,"; fi; done
   if [[ -n $PIN ]] && has prefill-1m; then ph+="prefill-1m,"; fi
   if [[ -n $ph ]]; then bench main "${ph%,}" "${mode[@]}"; fi
   if has vision; then gate vision vision_gate; fi
@@ -323,7 +325,7 @@ finish() {
   else python3 bench/tools/score.py --metrics "$METRICS" --gates "$GATES" --screen >> "$METRICS"; fi
   cat "$METRICS"; PRINTED=1
   echo "ASI engine=${SHA:0:12} boot_s=$BOOT_A_S failed_gates=${failed:-none} run=$RUN"
-  if [[ -n $PIN ]]; then echo "PINNED $REF $REF_VISION: commit both (engine ${SHA:0:12})"; fi
+  if [[ -n $PIN ]]; then echo "PINNED: $REF and $REF_VISION written or extended (engine ${SHA:0:12}); review the diff and commit them"; fi
   [[ -z $failed ]] || rc=1
   exit "$rc"
 }
