@@ -11,7 +11,8 @@ Engine candidates: worktree `~/projects/rexl3-inkling2-ar` (branch `inkling2-ar`
 - [x] byte-exact policy decision (user, 2026-11-18): Segment A only
 - [x] user, 2026-11-18: prefill work and routine runs stop at 256K
 - [x] profile of a cold 256K prefill (below): the all-reduce path is 41.6%, attention 21.4%
-- [ ] first Segment A change (order in "What to do first")
+- [x] first Segment A changes: runs #3 and #4 (Results, below); next: decode (draft length, collective latency, `lin_narrow`) and the
+      remaining prefill levers (overlap of the collective with compute, attention staging)
 
 ## Baseline (unmodified `f4e27ca`, eager, clocks locked at 2200 MHz)
 
@@ -136,16 +137,36 @@ What it would buy, from the profile:
 
 The loop stays in Segment A; ask again before any Segment B work.
 
-## What to do first
+## What to do next
 
-Profile a cold 256K prefill first (the 32K profile above under-weights attention at the contexts the loop now runs). Then item 1
-(reduce-scatter + all-gather, prefill) and item 3 (`lin_narrow`): independent files, each checked by one full run.
-Item 4 needs a measured cost table first: time a solo request at 1, 2, 4 and 8 verify rows (`"draft": false` for 1) and read the
-per-position acceptance counters `rexl3_spec_position_*` on `/metrics`, which also say what k the three content types want.
+Decode is where the score has most room now (42.1 of 70; prefill is 1,772 of 4,000, and the next prefill levers are bigger jobs):
+
+1. **Draft length (item 4).** Prose and structured prompts run at the serial rate (acceptance 0.14 and 0.21, 1.96 and 2.44 tokens a
+   round) while every round verifies 8 rows and runs the drafter's full 7-step walk. First measure what a round costs at each draft
+   length and which length each prompt type wants: a temporary env knob for the maximum draft length in `engine.rs`, then
+   `PHASES=warm,decode` screens at k = 0 (serial), 1, 3, 5, 7. Output-neutral: drafted == serial.
+2. **NCCL environment for decode** (bit-neutral, no code): `EXTRA_ENV` in `.env.example`, `PHASES=warm,decode` screens
+   (`NCCL_PROTO`, `NCCL_MAX_NCHANNELS`, `NCCL_NTHREADS`); 100 small all-reduces a round are 20% of a decode round.
+3. `lin_narrow_kernel` bandwidth (44% of the read roofline, 27% of a round), same accumulation order per output.
+4. Prefill: overlap of a layer's collective with compute; global attention staging (26% at 256K).
+
 Run screens (`PHASES=warm,prefill-32k` for a 32K idea, `warm,prefill` for 128K/256K, `warm,decode`) per change, a full run only to
 keep one. Before any final claim run the 1M benchmark (`PHASES=prefill-1m`).
 
+## Results (segment 2; engine commits on branch `inkling2-ar` of `~/projects/rexl3-inkling2-ar`)
+
+| Run | Engine | Change | `target_score` | decode_c1 | prefill 32K / 128K / 256K | Gates |
+|---|---|---|---:|---:|---|---|
+| #2 | `f4e27ca` | baseline | 0.4422 | 42.18 | 1,298 / 1,199 / 1,080 | 11/11 |
+| #3 | `8bd0ed5` | prefill all-reduce as reduce-scatter + all-gather for messages >= 2 MiB (`NcclComm::rsag_sum_f32`, `GroupComm::sum`): same rank-order sum, same bits, half the network bytes | 0.5071 | 42.14 | 1,709 / 1,528 / 1,339 | 11/11 |
+| #4 | `50bdb1f` | MoE plan of the prefill from the multi-block planner already in `moe_prefill.cu` (`PrefillScratch::use_parallel_plan(true)`, the Qwen Flash-Next setting): same plan, 2.2 ms a layer less | 0.5160 | 42.08 | 1,772 / 1,577 / 1,375 | 11/11 |
+
+Profile of a cold 256K prefill on `8bd0ed5` (rank 0, 196 s, after run #3): attention 51.5 s (26.5%), NCCL 49.9 s (25.6%, was 81.1 s;
+7.9 ms per all-reduce, two phases of 3.9 ms), MoE gateup+down 38.0 s (19.6%), `lin_wide` 20.5 s (10.6%), `mix_kernel` 6.8 s,
+`plan_kernel` 6.75 s (gone in run #4), `tp_sum_slots_vec_k` 4.9 s (was 18.6 s), `rot_in` 4.2 s, `conv` 4.0 s, `combine_f32` 3.0 s.
+The measured all-reduce saving at 256K is 99.7 s to 54.8 s, against the 54 s estimated.
+
 ## Not done
 
-- No Segment A change has been made yet; the engine worktree equals `f4e27ca`.
+- Decode is untouched: `decode_c1_tok_s` is 42.1 in every run (the changes above are prefill-only; decode messages stay one-shot).
 - `oracle`, Segment B and other families' golden tests are not part of the harness.
