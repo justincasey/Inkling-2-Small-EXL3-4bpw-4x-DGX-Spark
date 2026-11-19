@@ -1,0 +1,19 @@
+Byte-for-byte check of every row's logits, 2026-11-19 (cluster idle, DeepSeek stack stopped, clocks as the harness)
+
+Prompt: 9,292 ids (bench.long_ids), one cold request of 1 token, prefix cache off: prefill chunks of 4,096, 4,096 and 1,100 rows
+(the last one is split unevenly into two lanes when lanes run).
+Each boot: ./inkling2.sh start with DUMP_DIR set; every rank writes chunkNNNNN.logits.f32 (its 50,264-column logits shard of every
+row, soft-capped fp32, from the final-norm output) and chunkNNNNN.json (rows, tokens, vocab_base).
+
+  A       f4e27ca (pinned engine), full dump (rank 0 also writes hidden / router)      DUMP_DIR=/home/spark/plp-A
+  B_full  dc9b356, full dump: the dump disables lanes, all-reduce is reduce-scatter+all-gather, parallel MoE plan on    plp-Bfull
+  B_lanes dc9b356, EXTRA_ENV=REXL3_INKLING2_DUMP_LOGITS_ONLY=1: two lanes on, comm stream on                           plp-Blanes
+
+Compared on each of ranks 0-3: `cmp -s plp-A/rankR/chunk0000{0,1,2}.{logits.f32,json}` against the same file of B_full and B_lanes:
+all 48 comparisons (4 ranks x 6 files x 2 engines) identical, 0 differing. Logits per rank: 1.8 GB (3 files); rank 0 of A also held
+the 4 GB hidden dump. Request wall time: A 11.4 s, B_full 11.5 s, B_lanes 7.8 s.
+
+What it covers: every row's final hidden state of the 9,292-token prompt on all four ranks, through all 48 layers: the all-reduce
+change, the MoE plan change and the two-lane path (views, per-lane attention plans, comm stream). Not covered: decode windows (the
+dump is prefill only): the thin lin_narrow tiles and the draft budget, which are covered by tests/goldens (linear row/kernel invariance
+test, five goldens) and by the pin/spec gates; contexts beyond 9K: the pin gate (32K, 128K, 256K and, in the 1m runs, 1M tokens).

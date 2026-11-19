@@ -11,8 +11,11 @@ Engine candidates: worktree `~/projects/rexl3-inkling2-ar` (branch `inkling2-ar`
 - [x] byte-exact policy decision (user, 2026-11-18): Segment A only
 - [x] user, 2026-11-18: prefill work and routine runs stop at 256K
 - [x] profile of a cold 256K prefill (below): the all-reduce path is 41.6%, attention 21.4%
-- [x] first Segment A changes: runs #3 and #4 (Results, below); next: decode (draft length, collective latency, `lin_narrow`) and the
-      remaining prefill levers (overlap of the collective with compute, attention staging)
+- [x] Segment A changes kept: runs #3 to #7 (Results, below); run #8 confirms the final HEAD; numbers are in
+      `bench/records/2026-11-19-segment-a-final/`
+- [x] byte-for-byte logits check of `f4e27ca` against the final engine, lanes off and on (record, `bitwise-logits.txt`)
+- [x] 1M benchmark on the final engine (pin and memory PASS, 793 tok/s)
+- [ ] open items: "What is left" below (none started)
 
 ## Baseline (unmodified `f4e27ca`, eager, clocks locked at 2200 MHz)
 
@@ -103,6 +106,24 @@ else is flat. The all-reduce path is **99.7 s of 240 s (41.6%)**: item 1 saves a
 the sum work, 40.6 s + 14 s = about 54 s `[INFERENCE: assumes NCCL time scales with bytes]`, so 256K goes from 1,080 to about
 1,400 tok/s and 32K from 1,300 to about 1,800. After it, attention is the largest single kernel at 256K (51 s of 185 s).
 
+### Decode on the final engine (`dc9b356`, ranks 2 and 3, 103 verify rounds in 7.89 s, nsys `--trace=cuda`)
+
+76.7 ms a round of wall time, GPU idle 6.1-6.2% (launch gaps). Per round, rank 2 / rank 3: `lin_narrow` 20.5 / 20.3 ms, `moe_gemv` 19.2 / 18.5,
+`ncclDevKernel_SendRecv` 20.0 / 21.0 (includes waiting for the other ranks), other kernels 9.9 / 9.8, drafter walk (`markov_*`) 2.4 / 2.3.
+`lin_narrow` shapes (rank 1): (410,1) 42.5 launches 160 us 6.8 ms; the unembed (3,141,1) 1.8 launches 2,255 us 4.0 ms (463 MB in 2.25 ms:
+205 GB/s); the 64-thread `w_o` grid (576,1) 46.8 launches 78 us 3.7 ms (79 us before the thin tiles: no gain); (576,1) 8.8 launches 319 us
+2.8 ms; the small shapes (32,1) 70.8 launches 18 us (27 us before), (48,1) 24 us (31), (33,1) 18 us (27): the thin tiles saved about 1.6 ms a round.
+Not comparable round for round with the `f4e27ca` profile above: the Curve budget changes how many rows a verify round carries.
+The rank-skew share of the collectives was **not** separated: rank 0's kernel records were lost (below) and the per-collective durations of
+ranks 1-3 align across ranks with a correlation of only 0.16-0.41.
+
+nsys sessions of the lane engine lost rank 0 twice and completed once: with `--trace=cuda,nvtx` (prefill-only driver) during the 16-token decode
+after the 32K prefill, with `--trace=cuda --cuda-memory-usage=false` (prefill-only driver) not at all, and with `--trace=cuda ...` (prose,
+code, then 32K) during decode windows, before the 32K prefill. The loss came 148-162 s after launch, not at `--delay + --duration` (195 s);
+no fatal line, the guard did not act. Cause not found. Without nsys the lane engine lost no rank in about 15 boots (runs #6-#8, screens,
+two 1M runs) nor in a 16-cycle stress (cold prefills of 4,100-33,000 tokens, each followed at once by four concurrent decodes; every
+recurring prompt gave the same text). The dying rank's kernel records are lost with it: use the other ranks' files.
+
 ## What the profile changes
 
 The handoff ranked CUDA graphs first for decode (the RED-SNOW precedent). Here the GPU is 94.6% busy, so graphs are worth at most 5%.
@@ -119,10 +140,34 @@ Revised order for Segment A (every item keeps arithmetic order, so `pin`, `spec`
 | 7 | Prefill: `plan_kernel` (1 CTA, 2.2 ms, 383 launches) parallelized | 0.8 s | about -0.7 s |
 | 8 | Prefill, 256K: global attention (`attn_kernel`, int8 dequant per tile): stage dequantized K/V tiles in shared memory per CTA group without changing the online-softmax order | 51.3 s of 240 s at 256K (21%); in the last chunks 1.5 s of each 4.4 s chunk, about 190 ms per global layer `[INFERENCE: local layers are cheap]` | up to -20 s at 256K if the kernel reaches 2x `[INFERENCE]`; grows with context |
 
-Segment A ceiling `[ESTIMATE]`: decode about 55-60 tok/s (mean of four), prefill_32k about 2,400-2,600: `target_score` about 0.65-0.75.
-Reaching 70 and 4,000 needs more than bit-preserving work: the MoE prefill (4.8 s) and linears (2.6 s) are 30% of today's prefill and
-more than half of what remains after items 1-2, and decode at serial speed is bounded near 46 tok/s by the bf16 attention bytes
-(`docs/ROOFLINE.md`).
+Measured (run #8, final HEAD `dc9b356`): `target_score` 0.552, decode 44.4 tok/s, prefill_32k 1,923. The original estimate of a Segment A
+ceiling (decode 55-60, prefill_32k 2,400-2,600, score 0.65-0.75) was not reached: the estimates above were upper bounds from the first
+profile, and items 2, 3 and 5 paid less than they assumed.
+
+Status of each item (2026-11-19):
+
+| # | Status | What was measured |
+|---|---|---|
+| 1 | done, run #3 | prefill_32k 1,298 to 1,709 |
+| 2 | done, run #6 (two lanes) | 1,777 to 1,920 (+8%, not the +30% estimated): the group is paced by rank 3 (see "Lane profile") |
+| 3 | done in part, run #7 (thin tiles) | decode +2.4%; the narrow shapes that remain were not re-derived against a bandwidth ceiling except the unembed (205 GB/s) |
+| 4 | done, run #5 (Curve budget); walk truncation and the estimator constants not done | decode +3%; truncation about +1.2% and estimator +0.6% were estimated, not built |
+| 5 | NCCL settings tried, nothing moved (below); a 4-rank RoCE transport is **not attempted** | the "-8 ms" estimate is unsupported: the 155 us mean (72 us median) per collective includes time waiting for the other ranks, and its floor was not isolated |
+| 6 | closed | launch gaps are 2.6 us x 121,000 = 315 ms of 7.9 s: at most about 2% |
+| 7 | done, run #4 | prefill_32k 1,709 to 1,772 |
+| 8 | **open, not attempted** | attention is 1.3 s of 17.1 s at 32K (7.6%) and about 26% at 256K, where the score does not look; its efficiency against a roofline was not measured |
+| new | **open, not attempted**: MoE prefill kernel | about 44% of dense bf16 peak (see the correction above); the bit-preserving levers are in the kernel's own contract: the row-group size and the pipeline, not the K split or the sum order |
+
+The open items are upper-bounded, not measured: if every one paid its whole estimate (walk truncation and estimator +1.8% decode,
+narrow-kernel bandwidth up to +4%, a 4-rank transport up to +5%, attention staging up to +4% of 32K prefill, prefill elementwise
+fusion a few %, MoE prefill kernel up to +7% of 32K prefill) the score would be about 0.58 to 0.61 `[ESTIMATE]`. Reaching 70 and 4,000 needs more than bit-preserving work: decode at serial speed is bounded near 46 tok/s by the bf16 attention
+bytes (`docs/ROOFLINE.md`), and 4,000 tok/s at 32K would need the MoE prefill (6 s of 17 s) and everything else to halve together.
+
+Correction (2026-11-19): an earlier version of this plan and of the session notes called the MoE prefill and `lin_wide` "near tensor peak".
+That was not measured. From the 32K profile the MoE `gateup` + `down` take 4.8 s over 376 chunk-layers on rank 0, 12.8 ms each, against
+about 5.6 ms of math per 4,096-row chunk-layer at 93 TFLOP/s dense (`docs/AUTORESEARCH-HANDOFF.md` section 2): about 44%. The kernel
+(`moe_prefill.cu`) decodes each expert's EXL3 trellis once per group of up to 64 rows (about 85 pairs reach an expert per chunk, so most
+experts decode about twice) and its header states that the group size cannot change a bit. `lin_wide` was never compared with a roofline.
 
 ## Decision taken by the user: Segment A only (2026-11-18). Kept for the record: what Segment B would buy
 
@@ -137,21 +182,27 @@ What it would buy, from the profile:
 
 The loop stays in Segment A; ask again before any Segment B work.
 
-## What to do next
+## What is left (2026-11-19)
 
-Decode is where the score has most room now (42.1 of 70; prefill is 1,772 of 4,000, and the next prefill levers are bigger jobs):
+Nothing below is started. Order by expected value per effort; each needs a screen first (`PHASES=warm,decode`, `warm,prefill-32k`) and a
+full run only to keep it.
 
-1. **Draft length (item 4).** Prose and structured prompts run at the serial rate (acceptance 0.14 and 0.21, 1.96 and 2.44 tokens a
-   round) while every round verifies 8 rows and runs the drafter's full 7-step walk. First measure what a round costs at each draft
-   length and which length each prompt type wants: a temporary env knob for the maximum draft length in `engine.rs`, then
-   `PHASES=warm,decode` screens at k = 0 (serial), 1, 3, 5, 7. Output-neutral: drafted == serial.
-2. **NCCL environment for decode** (bit-neutral, no code): `EXTRA_ENV` in `.env.example`, `PHASES=warm,decode` screens
-   (`NCCL_PROTO`, `NCCL_MAX_NCHANNELS`, `NCCL_NTHREADS`); 100 small all-reduces a round are 20% of a decode round.
-3. `lin_narrow_kernel` bandwidth (44% of the read roofline, 27% of a round), same accumulation order per output.
-4. Prefill: overlap of a layer's collective with compute; global attention staging (26% at 256K).
+1. Decode: walk truncation (`Plan` policy plus `DraftCost` and a step count in the Propose lockstep message) with the Curve estimator
+   constants (decay 0.97, prior weight 2; +0.5-0.6% measured in a sweep as a lab knob, noise level): about +1.8% decode `[ESTIMATE]`.
+2. Prefill, the MoE kernel (`moe_prefill.cu`, 35% of the 32K prefill, about 44% of dense bf16 peak): first split its time into trellis
+   decode and mma (a variant that skips the decode, in a lab build), then try a group of up to 8 tiles (128 rows) so an expert decodes
+   once per chunk (register budget: it is at 224 of 255 with 4 tiles) and a deeper load pipeline. Same K split, same sums: the
+   byte-for-byte logits check and the MoE golden decide.
+3. Prefill, 256K and 128K only (not in the score): attention staging (item 8). First measure the attention kernel against a roofline.
+4. Decode: re-derive the byte counts of the remaining `lin_narrow` shapes (the (410,1) and 64-thread grids) to see what is left.
+5. Decode: a 4-rank collective transport (item 5). First isolate the no-compute one-shot latency at 147 KB over this fabric
+   (`crates/cuda/tests/nccl_oneshot_pair.rs` `latency` phase does this for two nodes): the saving is bounded by what the NCCL one-shot
+   costs above that floor, and the time other ranks spend waiting is not recoverable by any transport.
+6. Prefill: elementwise kernel fusion on the slowest rank (rank 3): a few % at 32K.
 
-Run screens (`PHASES=warm,prefill-32k` for a 32K idea, `warm,prefill` for 128K/256K, `warm,decode`) per change, a full run only to
-keep one. Before any final claim run the 1M benchmark (`PHASES=prefill-1m`).
+Run screens (`PHASES=warm,prefill-32k` for a 32K idea, `warm,prefill` for 128K/256K, `warm,decode`) per change. Before any final claim
+run the 1M benchmark (`PHASES=prefill-1m`) and the byte-for-byte logits check (`bench/records/2026-11-19-segment-a-final/bitwise-logits.txt`:
+`DUMP_DIR=... EXTRA_ENV=REXL3_INKLING2_DUMP_LOGITS_ONLY=1`, `cmp` against a boot of `f4e27ca`).
 
 ## Results (segment 2; engine commits on branch `inkling2-ar` of `~/projects/rexl3-inkling2-ar`)
 
@@ -168,7 +219,7 @@ Lane profile (rank 0, cold 32K, 17.2 s, `--trace=cuda`): comm kernels 10.3 s of 
 
 Thin tiles (run #7): decode `lin_narrow` shapes were 16 to 24 blocks (256 to 384 columns) and a 64-thread `w_o` grid at 79 us (about 120 GB/s, half of peak): too few warps in flight. A block of one n8 tile doubles the blocks with the same per-column accumulation (the invariance test covers narrow == thin == wide at every row count and output mode; goldens pass). Screens: threshold 1,024 warps 44.07, 4,096 warps 44.18 (noise-level better); full run 44.37 (43.33 before), every prompt type +1.7 to 2.5%.
 
-Decode kernels left after run #7 (profile of `f4e27ca`, rank 0, per round): MoE gemv 27 ms (gate/up 465 us a layer, down 226 us; around the bandwidth peak with L2 sharing between rows), the 100 one-shot all-reduces 15.6 ms (155 us each, mostly waiting for the slowest rank), `lin_narrow` 22 ms before thin tiles (unembed 4.1 ms is at 85% of peak), drafter walk `markov_logits` + `markov_step` 2.4 ms (6.2 steps a round), idle 2.6 us launch gaps 315 ms of 7.9 s.
+Decode kernels left after run #7 (profile of `f4e27ca`, rank 0, per round, before the thin tiles; the final-engine numbers are in the profile section): MoE gemv 27 ms (gate/up 465 us a layer, down 226 us; not compared with a bandwidth bound: the bytes a layer reads depend on how many distinct experts the verify rows reach, which was not counted), the 100 one-shot all-reduces 15.6 ms (155 us each; waiting for the other ranks is included and was not separated), `lin_narrow` 22 ms (unembed 4.1 ms, 205 GB/s), drafter walk `markov_logits` + `markov_step` 2.4 ms (6.2 steps a round), launch gaps of 2.6 us: 315 ms of 7.9 s.
 
 1M check of the lane engine (`f3bf927`, `PHASES=prefill-1m`, run `bench/runs/autoresearch-20261119-015435`): pin PASS at 1,008,317 tokens (byte-exact), memory PASS (rank 0 minimum 9.53 GiB against the 8 GiB floor), capacity 4 lanes at 1,048,576 tokens; prefill 1,271.9 s = 793 tok/s (baseline 688), decode after it 27.3 tok/s. The same check on the final engine `44cd901` (run `bench/runs/autoresearch-20261119-025735`): pin PASS, memory PASS (minimum 9.83 GiB normalized), 4 lanes, 793 tok/s, decode 27.55 tok/s. Run #7's installed build was `2a6ba1d`, the same tree as `44cd901` (the commit was amended for its message only).
 
@@ -183,5 +234,5 @@ The measured all-reduce saving at 256K is 99.7 s to 54.8 s, against the 54 s est
 
 ## Not done
 
-- Decode moved only through the draft budget (run #5); the collective and lane changes are prefill-only.
+- Decode moved through the draft budget (run #5) and the thin `lin_narrow` tiles (run #7); the collective and lane changes are prefill-only.
 - `oracle`, Segment B and other families' golden tests are not part of the harness.
