@@ -181,24 +181,24 @@ What it would buy, from the profile:
 
 The loop stays in Segment A; ask again before any Segment B work.
 
-## What is left (2026-11-19, after the second kernel pass)
+## What is left (2026-11-19, after the third pass)
 
-Nothing below is started. Each needs a screen first (`PHASES=warm,decode`, `warm,prefill-32k`) and a full run only to keep it; each is worth a
-few percent of one metric at best, which is a point or two of `target_score`.
+Nothing below is started. Each needs a screen first (`PHASES=warm,decode`, `warm,prefill-32k`; decode screens spread by boot, so take several) and a
+full run only to keep it.
 
-1. Decode: walk truncation (`BudgetPolicy::Plan` already asks the drafter for `ProposeRequest.max` drafts; the Inkling backend runs all 7 steps
-   and the round cost has no draft-step cost) with the Curve estimator constants (decay 0.97, prior weight 2; +0.5-0.6% in a sweep, noise
-   level). The walk is about 0.39 ms a step (`markov_logits` 252 us + `markov_step` 129 us), so a 3-step average on the prose and structured
-   streams saves about 1.2 ms of a 77 ms round: about +0.8% of decode overall `[ESTIMATE]`.
-2. Prefill: the wide `w_o` linear (75 MB of fp32 output against 1,536 of K; flat under the staged kernel) and the output store; the
-   `lin_wide2_kernel` still keeps 48 bytes of stack at the 128-register cap of two blocks an SM.
-3. Prefill: attention at 32K is 1.35 s on rank 3 in 256 blocks of one block an SM (5.3 waves, up to 11% of tail); at 128K and 256K it is
-   larger and outside the score. Its grid is head-major already. First measure it against a roofline.
-4. Decode: a 4-rank collective transport. First isolate the no-compute one-shot latency at 147 KB over this fabric
-   (`crates/cuda/tests/nccl_oneshot_pair.rs` `latency` phase does this for two nodes): the saving is bounded by what the NCCL one-shot costs
-   above that floor, and the time other ranks spend waiting is not recoverable by any transport.
-5. Prefill: the memory-bound elementwise kernels on the slowest rank (`mix` 1.05 s, `rot_in` 0.63, `tp_sum` 0.58, `conv` 0.53, `combine` 0.40,
-   `prologue` 0.37 on rank 3): each is near its DRAM floor on its own; only fusing passes would move them.
+1. Decode: understand the boot-to-boot spread of the L2 warm (46.3-47.7 over nine boots of one build against a tight 45.97-46.20 without it). If it is the
+   placement of the weights against the L2 sets, an allocation that avoids the bad case would put every boot at the good mode (+1.5% over the mean).
+2. Decode: PDL for the drafter chain (`add_norm`, `ctx_kv`, `block_prep`, `attn_part` / `attn_merge`, `silu_mul`, `markov_*`, the wide linears) and the shared
+   glue (`rmsnorm`): 163 of the 1,301 launches a round; about 0.5% at 2.6 us a launch.
+3. Decode: warm more of the weights during the all-reduces (the next layer's `w_k` and `w_v`, 2.4 MB each; at 24 MB of `w_q` the L2 lost, so the budget is
+   about 16-20 MB a window), and the experts are unknown until the router has run.
+4. Decode: walk truncation (`BudgetPolicy::Plan` already asks the drafter for `ProposeRequest.max` drafts; the Inkling backend runs all 7 steps and the round cost
+   has no draft-step cost) with the Curve estimator constants (decay 0.97, prior weight 2; +0.5-0.6% in a sweep, noise level). About +0.8% of decode `[ESTIMATE]`.
+5. Prefill: the wide `w_o` linear (75 MB of fp32 output against 1,536 of K; flat under the staged kernel), the attention tail (256 blocks over 48 SMs; heavy-first order
+   did nothing), and the memory-bound elementwise kernels on rank 3 (each near its DRAM floor; only fusing passes would move them).
+6. Decode: a 4-rank collective transport. First isolate the no-compute one-shot latency at 147 KB over this fabric (`crates/cuda/tests/nccl_oneshot_pair.rs`
+   `latency` phase does this for two nodes): the saving is bounded by what the NCCL one-shot costs above that floor, and the time other ranks spend waiting is not
+   recoverable by any transport.
 
 Before any final claim run the 1M benchmark (`PHASES=prefill-1m`) and the byte-for-byte logits check
 (`bench/records/2026-11-19-segment-a-final/bitwise-logits.txt`: `DUMP_DIR=... EXTRA_ENV=REXL3_INKLING2_DUMP_LOGITS_ONLY=1`, `cmp` against a boot
