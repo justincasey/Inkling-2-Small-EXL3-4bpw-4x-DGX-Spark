@@ -5,9 +5,12 @@ Engine candidates: worktree `~/projects/rexl3-inkling2-ar` (branch `inkling2-ar`
 
 ## Status
 
-- [x] harness built, references pinned from the unmodified engine, baseline logged (run #1, score 0.4431, 11/11 gates)
+- [x] harness built, references pinned from the unmodified engine, baseline logged (segment 1 run #1, score 0.4431, 11/11 gates;
+      segment 2 baseline run #2 after the 256K change, 0.4422, 11/11 gates)
 - [x] profile of one decode window and one 32K prefill on all four ranks (below)
-- [ ] byte-exact policy decision (user): Segment B allowed or not (below)
+- [x] byte-exact policy decision (user, 2026-11-18): Segment A only
+- [x] user, 2026-11-18: prefill work and routine runs stop at 256K
+- [ ] profile of a cold 256K prefill
 - [ ] first Segment A change (order in "What to do first")
 
 ## Baseline (unmodified `f4e27ca`, eager, clocks locked at 2200 MHz)
@@ -17,13 +20,19 @@ Engine candidates: worktree `~/projects/rexl3-inkling2-ar` (branch `inkling2-ar`
 | `decode_c1_tok_s` (mean of four prompt types) | 42.2 | 70 |
 | per type: prose / structured / json / code | 22.0 / 26.4 / 53.2 / 67.3 | |
 | DSpark acceptance / tokens per round | 0.307 / 3.13 (prose 0.14 and 1.96, structured 0.21 and 2.44, json 0.58 and 5.02, code 0.76 and 6.32) | |
-| `prefill_32k_tok_s` | 1,302 (25.2 s) | 4,000 |
-| prefill 128K / 1M | 1,193 / 688 tok/s | 3,200 / 1,700 (mine) |
-| decode c4 / c8 (two waves of 4 slots) | 52.2 / 57-60 | 100 at c8 (mine) |
-| decode at 32K / 128K / 1M context | 40.3 / 31.6 / 28.1 | |
+| `prefill_32k_tok_s` | 1,300 (25.2 s) | 4,000 |
+| prefill 128K / 256K / 1M | 1,199 (109 s) / 1,080 (243 s) / 688 (not routine) tok/s | 3,200 / n/a / 1,700 (mine) |
+| decode c4 / c8 (two waves of 4 slots) | 52.1 / 57-64 (c8 is noisy) | 100 at c8 (mine) |
+| decode at 32K / 128K / 256K / 1M context | 40.4 / 31.8 / 37.6 / 28.1 (256K: the reply stops at 125 tokens) | |
 | `target_score_raw` | 0.443 | 1.0 |
 
-Spread over repeats: `decode_c1` 0.6% (four runs), `prefill_32k` 0.02% (two runs).
+Spread over repeats: `decode_c1` 42.06-42.44 (0.9%, seven runs), `prefill_32k` 1,297.8-1,304.2 (0.5%, five runs).
+
+Segment 2 (user, 2026-11-18): routine runs stop at 256K; the 1M prefill is a separate benchmark for later
+(`PHASES=prefill-1m ./autoresearch.sh`). A full run is 29 minutes instead of 49. **The profile below was taken at 32K.** At 128K
+the engine does 1,199 tok/s and at 256K 1,080 against 1,300 at 32K, so attention (global layers, int8 dequant per tile) takes a
+growing share of the prefill; the collectives' cost per token does not grow. Profile a cold 256K prefill before choosing between
+the collective work (item 1) and attention work.
 
 ## Profile
 
@@ -93,7 +102,7 @@ Reaching 70 and 4,000 needs more than bit-preserving work: the MoE prefill (4.8 
 more than half of what remains after items 1-2, and decode at serial speed is bounded near 46 tok/s by the bf16 attention bytes
 (`docs/ROOFLINE.md`).
 
-## Decision needed from the user (handoff §4)
+## Decision taken by the user: Segment A only (2026-11-18). Kept for the record: what Segment B would buy
 
 Segment B changes bits and needs: the `oracle` gate (not wired in the harness), a new pin, a new segment (old comparisons void).
 What it would buy, from the profile:
@@ -107,10 +116,12 @@ Until the user decides, the loop stays in Segment A.
 
 ## What to do first
 
-Item 1 (reduce-scatter + all-gather, prefill) and item 3 (`lin_narrow`) are independent files and each is checked by one full run.
+Profile a cold 256K prefill first (the 32K profile above under-weights attention at the contexts the loop now runs). Then item 1
+(reduce-scatter + all-gather, prefill) and item 3 (`lin_narrow`): independent files, each checked by one full run.
 Item 4 needs a measured cost table first: time a solo request at 1, 2, 4 and 8 verify rows (`"draft": false` for 1) and read the
 per-position acceptance counters `rexl3_spec_position_*` on `/metrics`, which also say what k the three content types want.
-Run screens (`PHASES=warm,prefill` or `warm,decode`) per change, a full run only to keep one.
+Run screens (`PHASES=warm,prefill-32k` for a 32K idea, `warm,prefill` for 128K/256K, `warm,decode`) per change, a full run only to
+keep one. Before any final claim run the 1M benchmark (`PHASES=prefill-1m`).
 
 ## Not done
 

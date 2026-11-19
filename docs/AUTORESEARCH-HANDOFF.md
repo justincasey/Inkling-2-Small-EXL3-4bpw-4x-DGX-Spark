@@ -127,13 +127,13 @@ rank ideas. A full run keeps one. Full four-node boots take about 90–105 s eac
 (`bench/reference.json`, `bench/reference-vision.json`). Engine candidates are commits of the worktree
 `~/projects/rexl3-inkling2-ar` (branch `inkling2-ar` off `inkling2` @ `f4e27ca`). Where it differs from §3:
 
-- `decode-long` has no phase of its own: the cold 32K, 128K and 1M prefill requests each generate 128 tokens, so
-  `decode_ctx32k/128k/1m_tok_s` come from the same requests as `prefill_*_tok_s`.
+- `decode-long` has no phase of its own: the cold 32K, 128K and 256K (and 1M) prefill requests each generate 128 tokens, so
+  `decode_ctx32k/128k/256k/1m_tok_s` come from the same requests as `prefill_*_tok_s`.
 - Times come from the server's histograms `rexl3_request_ttft_seconds` (prefill) and `rexl3_request_e2e_seconds`
   (decode = (completion_tokens - 1) / (e2e - ttft)), read around solo requests. `decode_c1_tok_s` is the mean of the
   four per-type rates; c = 8 runs two waves of the 4 slots.
 - The 1M prompt goes as text (about 1,008,000 tokens): the server refuses a request body of more than 300,000 JSON
-  nodes, so a million ids cannot be sent. The 32K and 128K prompts go as ids.
+  nodes, so a million ids cannot be sent. The 32K, 128K and 256K prompts go as ids.
 - `goldens` = `testdata/gpu` byte-identical to the pinned engine's, plus the five Inkling 2 GPU golden tests passing
   without skipping. Other families' golden tests are not run (their writers are `#[ignore]` and need a wrapper).
 - `memory` normalizes each rank's minimum to the recorded 6.03 GiB prefix cache (`memcheck.py`). The capacity plan reads
@@ -141,11 +141,21 @@ rank ideas. A full run keeps one. Full four-node boots take about 90–105 s eac
   run, whatever `drop_caches` does. Raw minima differ by about 1.4 GiB between those boots.
 - The `oracle` gate is not wired in (Segment B; see §4).
 
-Baseline of the unmodified engine, from the pin run, one validation full run and two screens (four decode runs in all):
-`decode_c1_tok_s` 42.2 (prose 22.0, code 67.4, structured 26.4, json 53.1; acceptance 0.307, 3.13 tokens a round),
-`prefill_32k_tok_s` 1,304, `prefill_128k_tok_s` 1,199, `prefill_1m_tok_s` 689 (1,463 s), `decode_c4` 52.0, `decode_c8` 57.3,
-decode at 32K / 128K / 1M context 40.4 / 31.8 / 28.1, `target_score_raw` 0.443. Repeat spread: `decode_c1_tok_s` within 0.6%
-over the four runs, `prefill_32k_tok_s` within 0.02% over two. A full run takes 49 minutes, 24 of them the 1M prefill.
+Baseline of the unmodified engine (segment 1 run #1, the pin runs, one validation run and the segment 2 baseline run):
+`decode_c1_tok_s` 42.2 (prose 22.0, code 67.3, structured 26.4, json 53.1; acceptance 0.307, 3.13 tokens a round),
+`prefill_32k_tok_s` 1,300 (25.2 s), `prefill_128k_tok_s` 1,199 (109 s), `prefill_256k_tok_s` 1,080 (243 s), `prefill_1m_tok_s`
+689 (1,463 s, benchmark only), `decode_c4` 52.1, `decode_c8` 57-64 (noisy, not scored), decode at 32K / 128K / 256K / 1M
+context 40.4 / 31.8 / 37.6 / 28.1, `target_score_raw` 0.443. Spread over the runs so far: `decode_c1_tok_s` 42.06-42.44
+(0.9%, seven runs), `prefill_32k_tok_s` 1,297.8-1,304.2 (0.5%, five runs). The first 0.6% and 0.02% figures came from
+fewer runs and were too tight: a gain under about 1% decode or 0.5% prefill is noise.
+
+**Segment 2 (user, 2026-11-18): routine runs stop at 256K.** The 1M prefill was 24 of a full run's 49 minutes. A full run is
+now every phase but `prefill-1m` and takes 29 minutes (the segment 2 baseline: 1,719 s); the `prefill` phase is cold 32K,
+128K and 256K. Screens: `PHASES=warm,prefill-32k` (32K only), `warm,prefill` (about 12 minutes with the boot),
+`warm,decode`. The largest contexts are benchmarked later with `PHASES=prefill-1m ./autoresearch.sh` (a screen, score 0).
+The 256K reply stops at 125 tokens (`stop`), so `decode_ctx256k_tok_s` rests on few tokens. The 256K prompt goes as
+262,144 ids, under the server's 300,000 node limit. Dropping 1M from routine runs also drops its memory coverage:
+the `memory` gate now sees 256K, not 1M, prefill; run the 1M benchmark before any final claim.
 
 ## 4. Byte-exact policy: a decision to take before tuning
 
