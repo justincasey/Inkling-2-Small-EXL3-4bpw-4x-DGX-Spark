@@ -11,9 +11,9 @@ Engine candidates: worktree `~/projects/rexl3-inkling2-ar` (branch `inkling2-ar`
 - [x] byte-exact policy decision (user, 2026-11-18): Segment A only
 - [x] user, 2026-11-18: prefill work and routine runs stop at 256K
 - [x] profile of a cold 256K prefill (below): the all-reduce path is 41.6%, attention 21.4%
-- [x] Segment A changes kept: runs #3 to #7 (Results, below); run #8 confirms the final HEAD; numbers are in
-      `bench/records/2026-11-19-segment-a-final/`
-- [x] byte-for-byte logits check of `f4e27ca` against the final engine, lanes off and on (record, `bitwise-logits.txt`)
+- [x] Segment A changes kept: runs #3 to #7, then #9 and #10 after the second kernel pass (Results, below); run #8 confirmed the HEAD between them;
+      numbers are in `bench/records/2026-11-19-segment-a-final/`
+- [x] byte-for-byte logits check of `f4e27ca` against the engine, lanes off and on, on `dc9b356` and again on the final `b1c4de1` (record, `bitwise-logits.txt`)
 - [x] 1M benchmark on `44cd901` (pin and memory PASS, 793 tok/s); to be re-run on the final engine of the second kernel pass
 - [ ] open items: "What is left" below (none started)
 
@@ -156,7 +156,8 @@ Status of each item (2026-11-19):
 | 6 | closed | launch gaps are 2.6 us x 121,000 = 315 ms of 7.9 s: at most about 2% |
 | 7 | done, run #4 | prefill_32k 1,709 to 1,772 |
 | 8 | **open, not attempted** | attention is 1.3 s of 17.1 s at 32K (7.6%) and about 26% at 256K, where the score does not look; its efficiency against a roofline was not measured |
-| new | **open, not attempted**: MoE prefill kernel | about 44% of dense bf16 peak (see the correction above); the bit-preserving levers are in the kernel's own contract: the row-group size and the pipeline, not the K split or the sum order |
+| new | partly done, run #9; the rest measured and dropped | MoE prefill kernel: A prefetch for MCG +4.5% of a layer; deeper weight prefetch, a fused group list, a joint MoE for both lanes (+0.5%), 8,192-row chunks: no gain or not allowed (Results, below) |
+| new | done, run #10 | `lin_wide`: staged kernel and L2-grouped block order, 32K prefill +5.5% |
 
 The open items are upper-bounded, not measured: if every one paid its whole estimate (walk truncation and estimator +1.8% decode,
 narrow-kernel bandwidth up to +4%, a 4-rank transport up to +5%, attention staging up to +4% of 32K prefill, prefill elementwise
@@ -182,27 +183,28 @@ What it would buy, from the profile:
 
 The loop stays in Segment A; ask again before any Segment B work.
 
-## What is left (2026-11-19)
+## What is left (2026-11-19, after the second kernel pass)
 
-Nothing below is started. Order by expected value per effort; each needs a screen first (`PHASES=warm,decode`, `warm,prefill-32k`) and a
-full run only to keep it.
+Nothing below is started. Each needs a screen first (`PHASES=warm,decode`, `warm,prefill-32k`) and a full run only to keep it; each is worth a
+few percent of one metric at best, which is a point or two of `target_score`.
 
-1. Decode: walk truncation (`Plan` policy plus `DraftCost` and a step count in the Propose lockstep message) with the Curve estimator
-   constants (decay 0.97, prior weight 2; +0.5-0.6% measured in a sweep as a lab knob, noise level): about +1.8% decode `[ESTIMATE]`.
-2. Prefill, the MoE kernel (`moe_prefill.cu`, 35% of the 32K prefill, about 44% of dense bf16 peak): first split its time into trellis
-   decode and mma (a variant that skips the decode, in a lab build), then try a group of up to 8 tiles (128 rows) so an expert decodes
-   once per chunk (register budget: it is at 224 of 255 with 4 tiles) and a deeper load pipeline. Same K split, same sums: the
-   byte-for-byte logits check and the MoE golden decide.
-3. Prefill, 256K and 128K only (not in the score): attention staging (item 8). First measure the attention kernel against a roofline.
-4. Decode: re-derive the byte counts of the remaining `lin_narrow` shapes (the (410,1) and 64-thread grids) to see what is left.
-5. Decode: a 4-rank collective transport (item 5). First isolate the no-compute one-shot latency at 147 KB over this fabric
-   (`crates/cuda/tests/nccl_oneshot_pair.rs` `latency` phase does this for two nodes): the saving is bounded by what the NCCL one-shot
-   costs above that floor, and the time other ranks spend waiting is not recoverable by any transport.
-6. Prefill: elementwise kernel fusion on the slowest rank (rank 3): a few % at 32K.
+1. Decode: walk truncation (`BudgetPolicy::Plan` already asks the drafter for `ProposeRequest.max` drafts; the Inkling backend runs all 7 steps
+   and the round cost has no draft-step cost) with the Curve estimator constants (decay 0.97, prior weight 2; +0.5-0.6% in a sweep, noise
+   level). The walk is about 0.39 ms a step (`markov_logits` 252 us + `markov_step` 129 us), so a 3-step average on the prose and structured
+   streams saves about 1.2 ms of a 77 ms round: about +0.8% of decode overall `[ESTIMATE]`.
+2. Prefill: the wide `w_o` linear (75 MB of fp32 output against 1,536 of K; flat under the staged kernel) and the output store; the
+   `lin_wide2_kernel` still keeps 48 bytes of stack at the 128-register cap of two blocks an SM.
+3. Prefill: attention at 32K is 1.35 s on rank 3 in 256 blocks of one block an SM (5.3 waves, up to 11% of tail); at 128K and 256K it is
+   larger and outside the score. Its grid is head-major already. First measure it against a roofline.
+4. Decode: a 4-rank collective transport. First isolate the no-compute one-shot latency at 147 KB over this fabric
+   (`crates/cuda/tests/nccl_oneshot_pair.rs` `latency` phase does this for two nodes): the saving is bounded by what the NCCL one-shot costs
+   above that floor, and the time other ranks spend waiting is not recoverable by any transport.
+5. Prefill: the memory-bound elementwise kernels on the slowest rank (`mix` 1.05 s, `rot_in` 0.63, `tp_sum` 0.58, `conv` 0.53, `combine` 0.40,
+   `prologue` 0.37 on rank 3): each is near its DRAM floor on its own; only fusing passes would move them.
 
-Run screens (`PHASES=warm,prefill-32k` for a 32K idea, `warm,prefill` for 128K/256K, `warm,decode`) per change. Before any final claim
-run the 1M benchmark (`PHASES=prefill-1m`) and the byte-for-byte logits check (`bench/records/2026-11-19-segment-a-final/bitwise-logits.txt`:
-`DUMP_DIR=... EXTRA_ENV=REXL3_INKLING2_DUMP_LOGITS_ONLY=1`, `cmp` against a boot of `f4e27ca`).
+Before any final claim run the 1M benchmark (`PHASES=prefill-1m`) and the byte-for-byte logits check
+(`bench/records/2026-11-19-segment-a-final/bitwise-logits.txt`: `DUMP_DIR=... EXTRA_ENV=REXL3_INKLING2_DUMP_LOGITS_ONLY=1`, `cmp` against a boot
+of `f4e27ca`). Lab branches of the engine worktree that hold measured-and-dropped code: `lab/fused-groups`, `lab/joint-moe`.
 
 ## Results (segment 2; engine commits on branch `inkling2-ar` of `~/projects/rexl3-inkling2-ar`)
 
@@ -232,6 +234,8 @@ Kernel findings of the second pass (ncu with root counters, `sudo -n`, on the re
 - MoE prefill `gateup` (4-tile groups): tensor pipe 46%, L2 47%, issue slots 30%, one 8-warp block an SM (224 registers, 82 KB shared): latency-bound, not decode-bound (removing the trellis decode saved 9%, the block reduce 3%, both within a noisy bench). Prefetching the A fragments one step ahead for the MCG codebook (the other codebooks had it) took a real layer of 4,096 rows from 18.7-19.4 to 17.9 ms: run #9. Weight prefetch deeper than one step (per group size, at 2,048 and 4,096 rows) did nothing. `rot_in` is near its DRAM bound (about 230 MB moved in 1.3 ms); a grid-stride launch took 1.43 to 1.31 ms: dropped.
 - In lane mode (2,048 rows a lane, about 42 pairs an expert) the MoE reads each expert's weights twice a chunk-layer: about 2.8 GB, 11.6 ms at 237 GB/s of the 15.9 ms the gate/up and down kernels take; the lane penalty on the MoE is about 4.4 ms a chunk-layer. A fused group list (one launch, an expert's groups adjacent; branch `lab/fused-groups` of the engine worktree) gained 0.5-0.9 ms in the 4,096-row bench and nothing in the engine (1,965.6 against 1,966.9), because a lane has about one group an expert. A joint MoE for both lanes (one weight pass) would save about 4.4 ms and expose about 2.5 ms more of the all-reduces: an estimated +0 to +5% of prefill, not built. 8,192-row chunks would halve the weight passes, but the engine caps rows at 4,096 and the extra buffers (about 2 GB) would come out of the prefix cache and fail the memory gate.
 - `lin_wide`: 3.10 s of the 32K lane prefill on rank 0, 1.87 s of it one launch a layer-lane of n=3,328 x k=4,608 at 23 TFLOP/s. In isolation that shape ran at 38 TFLOP/s against 50-60 for the 1,536-column shapes: the plain grid order read the 30.7 MB weight matrix once per row block (past L2). Row blocks walking the weight columns in groups of 8 took it from 1,649 to 1,184 us (2,048 rows); staging alone gave -15% on the q-like shapes and -25% on the router shape, nothing on `w_o` (75 MB of fp32 output): run #10.
+- A joint MoE for both lanes (`moe_joint`: one MoE call over the chunk's rows between the per-lane router and the per-lane all-reduces; branch `lab/joint-moe`, byte-exact by the row-invariance contract) measured 2,083 tok/s against 2,068-2,072: +0.5%, within noise. The weight-pass saving (about 4.4 ms a chunk-layer) is cancelled by the exposed all-reduces: AR2 of the first lane has nothing left to hide behind and AR1 of the second hides only behind the first lane's conv/mix/router.
+- The L2 hit rate of the 4-tile gate/up kernel is 85% and its DRAM read is about 160 GB/s of 273: neither the tensor pipe (46%), L2 (47%) nor DRAM saturates; the kernel is limited by latency at 8 warps an SM.
 - Decode MoE gemv at 8 rows: about 111 MB in 0.43 ms, about 95% of the DRAM peak: nothing to win.
 
 Measured and dropped: NCCL `PROTO` LL / LL128, `MAX_NCHANNELS` 2 / 8, `P2P_NET_CHUNKSIZE` 256K / 512K / 1M (all within noise); `lin_narrow` unroll 4 (+0.9%, noise); a highest-priority comm stream (no effect); the Curve estimator's decay 0.97 with prior weight 2 to 4 (+0.5 to 0.6%, noise level).
