@@ -10,7 +10,7 @@ Engine candidates: worktree `~/projects/rexl3-inkling2-ar` (branch `inkling2-ar`
 - [x] profile of one decode window and one 32K prefill on all four ranks (below)
 - [x] byte-exact policy decision (user, 2026-11-18): Segment A only
 - [x] user, 2026-11-18: prefill work and routine runs stop at 256K
-- [ ] profile of a cold 256K prefill
+- [x] profile of a cold 256K prefill (below): the all-reduce path is 41.6%, attention 21.4%
 - [ ] first Segment A change (order in "What to do first")
 
 ## Baseline (unmodified `f4e27ca`, eager, clocks locked at 2200 MHz)
@@ -82,6 +82,26 @@ The collective is "send the full partial to every peer, then sum in rank order":
 come from a reduce-scatter (each rank receives only its quarter of every peer's partial, sums it in rank order) followed by an
 all-gather: half the bytes, a quarter of the sum work.
 
+### Prefill 256K (user: the largest context of a routine run), rank 0, 240 s, 64 chunks of 4,096 rows
+
+Same method, `profile_driver.py T0 135 262144` with `--duration=330`; one cold 262,144-token prompt, 16 tokens, 243.7 s request.
+Ranks 1-3 within 1.5% of rank 0 on every line (rank 3 does 12% more MoE and waits 7% less in NCCL).
+
+| What | s | share | per call |
+|---|---:|---:|---:|
+| `ncclDevKernel_SendRecv` | 81.1 | 33.8% | 13.4 ms, flat from the first chunk to the last |
+| `tp_sum_slots_vec_k` | 18.6 | 7.7% | 3.07 ms, flat |
+| `attn_kernel` (all 48 layers' launches) | 51.3 | 21.4% | mean 2.7 ms per launch in the first chunks, 31.4 ms in the last (about 1.5 s of each 4.4 s chunk) |
+| MoE `gateup_kernel` + `down_kernel` | 24.9 + 13.6 = 38.5 | 16.1% | flat |
+| `lin_wide_kernel` | 20.7 | 8.6% | flat |
+| `plan_kernel` + `mix_kernel` | 6.7 + 6.9 | 5.7% | flat |
+| `rot_in`, `conv`, `combine_f32`, `prologue`, `mix_norm`, ... | 4.2 + 4.1 + 3.0 + 2.6 + 1.1 | 6.0% | flat |
+
+GPU idle 0.2%. Per-token time grows from 0.77 ms (32K) to 0.93 ms (256K) because attention grows with the context and everything
+else is flat. The all-reduce path is **99.7 s of 240 s (41.6%)**: item 1 saves about half the NCCL bytes and three quarters of
+the sum work, 40.6 s + 14 s = about 54 s `[INFERENCE: assumes NCCL time scales with bytes]`, so 256K goes from 1,080 to about
+1,400 tok/s and 32K from 1,300 to about 1,800. After it, attention is the largest single kernel at 256K (51 s of 185 s).
+
 ## What the profile changes
 
 The handoff ranked CUDA graphs first for decode (the RED-SNOW precedent). Here the GPU is 94.6% busy, so graphs are worth at most 5%.
@@ -96,6 +116,7 @@ Revised order for Segment A (every item keeps arithmetic order, so `pin`, `spec`
 | 5 | Decode: collective latency (166 us each, 100 per round): Nemotron's RoCE `TpComm` (`roce_*.cu`) or NCCL settings, same rank-order sum | 16.9 ms per round | about -8 ms per round if wire time is ~80 us |
 | 6 | Decode: CUDA graphs for the verify window and the proposal (`window_graph.rs`, `Rows::set_bounds` already exist) | 4.5 ms per round of gaps | at most +5% |
 | 7 | Prefill: `plan_kernel` (1 CTA, 2.2 ms, 383 launches) parallelized | 0.8 s | about -0.7 s |
+| 8 | Prefill, 256K: global attention (`attn_kernel`, int8 dequant per tile): stage dequantized K/V tiles in shared memory per CTA group without changing the online-softmax order | 51.3 s of 240 s at 256K (21%); in the last chunks 1.5 s of each 4.4 s chunk, about 190 ms per global layer `[INFERENCE: local layers are cheap]` | up to -20 s at 256K if the kernel reaches 2x `[INFERENCE]`; grows with context |
 
 Segment A ceiling `[ESTIMATE]`: decode about 55-60 tok/s (mean of four), prefill_32k about 2,400-2,600: `target_score` about 0.65-0.75.
 Reaching 70 and 4,000 needs more than bit-preserving work: the MoE prefill (4.8 s) and linears (2.6 s) are 30% of today's prefill and
