@@ -170,7 +170,7 @@ Thin tiles (run #7): decode `lin_narrow` shapes were 16 to 24 blocks (256 to 384
 
 Decode kernels left after run #7 (profile of `f4e27ca`, rank 0, per round): MoE gemv 27 ms (gate/up 465 us a layer, down 226 us; around the bandwidth peak with L2 sharing between rows), the 100 one-shot all-reduces 15.6 ms (155 us each, mostly waiting for the slowest rank), `lin_narrow` 22 ms before thin tiles (unembed 4.1 ms is at 85% of peak), drafter walk `markov_logits` + `markov_step` 2.4 ms (6.2 steps a round), idle 2.6 us launch gaps 315 ms of 7.9 s.
 
-1M check of the lane engine (`f3bf927`, `PHASES=prefill-1m`, run `bench/runs/autoresearch-20261119-015435`): pin PASS at 1,008,317 tokens (byte-exact), memory PASS (rank 0 minimum 9.53 GiB against the 8 GiB floor), capacity 4 lanes at 1,048,576 tokens; prefill 1,271.9 s = 793 tok/s (baseline 688), decode after it 27.3 tok/s.
+1M check of the lane engine (`f3bf927`, `PHASES=prefill-1m`, run `bench/runs/autoresearch-20261119-015435`): pin PASS at 1,008,317 tokens (byte-exact), memory PASS (rank 0 minimum 9.53 GiB against the 8 GiB floor), capacity 4 lanes at 1,048,576 tokens; prefill 1,271.9 s = 793 tok/s (baseline 688), decode after it 27.3 tok/s. The same check on the final engine `44cd901` (run `bench/runs/autoresearch-20261119-025735`): pin PASS, memory PASS (minimum 9.83 GiB normalized), 4 lanes, 793 tok/s, decode 27.55 tok/s. Run #7's installed build was `2a6ba1d`, the same tree as `44cd901` (the commit was amended for its message only).
 
 Decode idle (rank 0, 7.9 s of decode): 425 ms of gaps between kernels, 315 ms of them in 121,000 gaps under 5 us and under 2 ms of host-side gaps above 100 us, so CUDA graphs are worth at most about 2% of a round.
 
