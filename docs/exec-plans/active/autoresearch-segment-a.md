@@ -160,7 +160,6 @@ keep one. Before any final claim run the 1M benchmark (`PHASES=prefill-1m`).
 | #2 | `f4e27ca` | baseline | 0.4422 | 42.18 | 1,298 / 1,199 / 1,080 | 11/11 |
 | #3 | `8bd0ed5` | prefill all-reduce as reduce-scatter + all-gather for messages >= 2 MiB (`NcclComm::rsag_sum_f32`, `GroupComm::sum`): same rank-order sum, same bits, half the network bytes | 0.5071 | 42.14 | 1,709 / 1,528 / 1,339 | 11/11 |
 | #4 | `50bdb1f` | MoE plan of the prefill from the multi-block planner already in `moe_prefill.cu` (`PrefillScratch::use_parallel_plan(true)`, the Qwen Flash-Next setting): same plan, 2.2 ms a layer less | 0.5160 | 42.08 | 1,772 / 1,577 / 1,375 | 11/11 |
-
 | #5 | `e0ee556` | draft budget `BudgetPolicy::Curve` over a measured round-cost grid (`engine.rs` `round_cost`; one stream measured, two or more flat = every draft verified as before): prose 22.0 to 24.8, structured 26.4 to 28.5 tok/s | 0.5248 | 43.41 | 1,777 / 1,573 / 1,372 | 11/11 |
 | #6 | `8ee0fe3` | a prefill chunk of 1,024+ rows as two lanes (`Inkling2Rank::forward_lanes`): row views of the step buffers, layers interleaved A.pre B.pre A.mid B.mid, the four collectives of a layer on a comm stream under the other lane's compute | 0.5450 | 43.33 | 1,920 / 1,684 / 1,441 | 11/11 |
 
