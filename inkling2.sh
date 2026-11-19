@@ -303,7 +303,9 @@ cmd_build() {
     || die "$sha does not descend from the upstream base ${REXL3_UPSTREAM_BASE:0:12}"
   log "build engine ${sha:0:12} on rank 0 (${NODE[0]})"
   git -C "$REXL3_SRC" archive --format=tar "$sha" | ssh "${SSH_OPTS[@]}" "$SSH_USER@${NODE[0]}" \
-    "rm -rf '$BASE_DIR/src.new' && mkdir -p '$BASE_DIR/src.new' && tar -x -C '$BASE_DIR/src.new'"
+    "rm -rf '$BASE_DIR/src.new' && mkdir -p '$BASE_DIR/src.new' && tar -x -C '$BASE_DIR/src.new' && find '$BASE_DIR/src.new' -type f -exec touch {} +"
+  # git archive stamps every file with the commit's time; cargo trusts file times, so a build after a newer build of another tree (lab builds, a later commit)
+  # would link that tree's crates under this commit's name. The touch makes every source newer than any earlier artifact: the gb-* crates always rebuild.
   remote 0 '
     pgrep -f "[r]exl3-serve" >/dev/null && { echo "FAIL rexl3-serve is running on rank 0: stop it first" >&2; exit 1; }
     rm -rf "$BASE_DIR/src" && mv "$BASE_DIR/src.new" "$BASE_DIR/src" && mkdir -p "$BASE_DIR/bin" "$BASE_DIR/logs"
