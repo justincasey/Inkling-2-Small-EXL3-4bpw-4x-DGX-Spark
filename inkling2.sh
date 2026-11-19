@@ -93,6 +93,7 @@ source "$ROOT/config/pins.sh"
 : "${EXTRA_FLAGS:=}"                                                            # more rexl3-serve flags, every rank alike
 : "${EXTRA_ENV:=}"                                                              # more KEY=VALUE words, every rank alike
 : "${DUMP_DIR:=}"                                                               # absolute: REXL3_INKLING2_DUMP on every rank
+: "${PROFILE_NSYS:=}"                                                           # nsys profile arguments for a lab profile (empty: none)
 : "${READY_TIMEOUT_S:=1800}"                                                    # start: wait this long for /health
 : "${SPEC:=dspark}"                                                             # --spec: none|copy|dspark|auto
 : "${PREFIX_CACHE:=on}"                                                         # --prefix-cache on|off, auto (no flag) or MiB
@@ -343,9 +344,14 @@ cmd_build() {
 # and receives the image rows from rank 0; so VISION=off adds --no-vision to every rank alike and VISION=on to none.
 serve_cmd() {
   local r=$1 w
-  local -a extra_env extra_flags env args
+  local -a extra_env extra_flags env args prof=() nsys_args
   read -r -a extra_env <<<"$EXTRA_ENV"
   read -r -a extra_flags <<<"$EXTRA_FLAGS"
+  # PROFILE_NSYS: a lab profile; every rank runs under `nsys profile` with these arguments and writes $BASE_DIR/prof/rank<R>
+  if [[ -n $PROFILE_NSYS ]]; then
+    read -r -a nsys_args <<<"$PROFILE_NSYS"
+    prof=(nsys profile "${nsys_args[@]}" --force-overwrite=true -o "$BASE_DIR/prof/rank$r")
+  fi
   env=(HOME="/home/$SSH_USER" USER="$SSH_USER" LOGNAME="$SSH_USER"
     PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     "${NCCL_ENV[@]}" REXL3_NCCL_LIB="$NCCL_LIB" RUST_BACKTRACE=1)
@@ -362,7 +368,7 @@ serve_cmd() {
   [[ $VISION == on ]] || args+=(--no-vision)
   args+=(--allow-unvalidated-pack --served-model-name "$SERVED_NAME" --host 0.0.0.0 --port "$PORT" "${extra_flags[@]}")
   printf 'exec env -i'
-  for w in "${env[@]}" "$BIN" "${args[@]}"; do printf ' %q' "$w"; done
+  for w in "${env[@]}" "${prof[@]}" "$BIN" "${args[@]}"; do printf ' %q' "$w"; done
   printf '\n'
 }
 
@@ -390,7 +396,7 @@ api_up() { curl -fsS -m 5 -o /dev/null "${AUTH[@]}" "$API/health" 2>/dev/null; }
 launch_rank() {
   local r=$1
   remote "$r" '
-    mkdir -p "$BASE_DIR/logs" "$BASE_DIR/run"
+    mkdir -p "$BASE_DIR/logs" "$BASE_DIR/run" "$BASE_DIR/prof"
     log=$BASE_DIR/logs/rank$RANK.log glog=$BASE_DIR/logs/memguard-rank$RANK.log gmin=$BASE_DIR/logs/memguard-rank$RANK.min
     pidf=$BASE_DIR/run/rank$RANK.pid gpidf=$BASE_DIR/run/memguard-rank$RANK.pid stage=$BASE_DIR/run/stage-rank$RANK
     if [[ -s $pidf ]] && kill -0 "$(<"$pidf")" 2>/dev/null; then echo "FAIL rank $RANK: already running (pid $(<"$pidf"))" >&2; exit 1; fi

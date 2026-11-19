@@ -127,6 +127,13 @@ out=$(env "${serve_env[@]}" DUMP_DIR=/home/spark/inkling2-dump EXTRA_ENV="REXL3_
   EXTRA_FLAGS="--kv-tokens 65536" "$BASH_BIN" ./inkling2.sh print-serve 2>&1) || bad "print-serve with passthrough exited non-zero: $out"
 check_serve passthrough "$base_env REXL3_INKLING2_DUMP=/home/spark/inkling2-dump REXL3_TEST_A=1 REXL3_TEST_B=x" \
   "--kv-tokens 65536" "$out" "spec=dspark prefix=on vision=on floor=" || fails=$((fails + 1))
+out=$(env "${serve_env[@]}" PROFILE_NSYS="--delay=5 --duration=9" "$BASH_BIN" ./inkling2.sh print-serve 2>&1) || bad "print-serve with PROFILE_NSYS exited non-zero: $out"
+n=0; for r in 0 1 2 3; do
+  if grep -q "^exec env -i .* nsys profile --delay=5 --duration=9 --force-overwrite=true -o [^ ]*/prof/rank$r [^ ]*/bin/rexl3-serve .*--tp-rank $r " <<<"$out"; then n=$((n + 1)); fi
+done
+[[ $n == 4 ]] && ok "PROFILE_NSYS puts every rank under nsys profile, each with its own output file" || bad "PROFILE_NSYS: $n of 4 ranks wrapped"
+grep -q nsys <<<"$(env "${serve_env[@]}" "$BASH_BIN" ./inkling2.sh print-serve 2>&1)" && bad "nsys in the default command line" \
+  || ok "no nsys in the default command line"
 out=$(env "${serve_env[@]}" SPEC=none PREFIX_CACHE=2048 VISION=off MEMORY_FLOOR_GIB=6.5 "$BASH_BIN" ./inkling2.sh print-serve 2>&1) \
   || bad "print-serve (serial, MiB cache, no vision, floor) exited non-zero: $out"
 check_serve "serial, MiB cache, no vision, floor" "$base_env REXL3_MEMORY_FLOOR_GIB=6.5" "" "$out" \
