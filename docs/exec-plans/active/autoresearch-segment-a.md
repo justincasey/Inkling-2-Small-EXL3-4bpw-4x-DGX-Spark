@@ -186,8 +186,12 @@ The loop stays in Segment A; ask again before any Segment B work.
 Nothing below is started. Each needs a screen first (`PHASES=warm,decode`, `warm,prefill-32k`; decode screens spread by boot, so take several) and a
 full run only to keep it.
 
-1. Decode: understand the boot-to-boot spread of the L2 warm (46.3-47.7 over eleven boots of one build against a tight 45.97-46.20 without it). If it is the
-   placement of the weights against the L2 sets, an allocation that avoids the bad case would put every boot at the good mode (+1.5% over the mean).
+1. Decode: understand the boot-to-boot spread of the L2 warm (46.3-47.7 over eleven boots of one build against a tight 45.97-46.20 without it). Ruled out: CPU
+   placement (the node has 10 Cortex-X925 cores at 3.9 GHz and 10 Cortex-A725 at 2.8 GHz; in one boot decode_c1 was 46.39 unpinned, 46.46 pinned to the A725 cores,
+   46.15 pinned to the X925 cores and 46.32 unpinned again, and in a high-mode boot 47.85 / 47.74 unpinned with every busy thread on an X925 core and 47.28 / 47.50 pinned
+   to them: repeats inside a boot agree, pinning changes nothing) and simple allocation randomness (the isolated L2 bench in eight fresh processes: 281-287 us without the warm,
+   214-224 us with 16 MB). Left as guesses: the NCCL path or channel assignment of a boot, or the physical placement of the weights against the L2 sets inside the engine. If a cause
+   is found, fixing it puts every boot at the good mode (+1.5% over the mean).
 2. Decode: PDL for the drafter chain (`add_norm`, `ctx_kv`, `block_prep`, `attn_part` / `attn_merge`, `silu_mul`, `markov_*`, the wide linears) and the shared
    glue (`rmsnorm`): 163 of the 1,301 launches a round; about 0.5% at 2.6 us a launch.
 3. Decode: warm more of the weights during the all-reduces (the next layer's `w_k` and `w_v`, 2.4 MB each; at 24 MB of `w_q` the L2 lost, so the budget is

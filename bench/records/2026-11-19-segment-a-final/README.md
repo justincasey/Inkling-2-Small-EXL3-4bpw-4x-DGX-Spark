@@ -21,3 +21,6 @@
 
 All eleven runs: 11 of 11 gates. `1m-*`: cold 1,008,317-token prefill, 4 x 1,048,576-token lanes, pin and memory PASS (793 tok/s on
 both engines); the 1M runs of the later engines `1m-b1c4de1` and `1m-72d8d10`: 814 and 815 tok/s, pin and memory PASS. Run 12's decode_c1 of 47.52 is a good boot: eleven boots of that build gave 46.3-47.7 (mean 47.0), see the exec plan.
+
+The engine worktree's HEAD after the benchmarked `72d8d10` is `3bddc4d`: it adds only the PDL ordering probe (`csrc/pdl_probe.cu`, `tests/pdl_order.rs`) to the
+production code of `72d8d10`; the later decode screens (the interleaved PDL off / on set) ran on it.
