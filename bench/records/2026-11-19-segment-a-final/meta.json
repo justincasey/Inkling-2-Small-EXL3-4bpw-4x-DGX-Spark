@@ -2,7 +2,7 @@
   "name": "segment-a-final",
   "date": "2026-11-19",
   "recipe": {
-    "commit": "ddff5ed6829bd8f3f2aba52991b3cec91a40a631",
+    "commit": "e173b00fd99a071d4f1fb4fba676cf9dd42ebe9c",
     "uncommitted_files": 0
   },
   "pack": {
@@ -11,18 +11,18 @@
     "dir": "/home/spark/models/Inkling-2-Small-EXL3-4bpw"
   },
   "engine": {
-    "commit": "23eb6f3b1173cd2242b76143a59f4ab5ea82aa31",
-    "sha256": "a3dc11df2a002a395cc139ba8334fa2efd92595535e5630b31deb5247e472acd",
+    "commit": "457d637f526eef25de4b9cf8c7c28a2f268e8d79",
+    "sha256": "f1b4845af7c577b1fca323136d052b3ac3db638509b41a5a2af3b3defc0e7296",
     "pinned_commit": "f4e27caec70da060df2a923097fb750a0880a653",
     "lab_build": true,
     "upstream_base": "06181b1d742912108361784257710806d9a75d18",
     "version": {
       "version": "0.1.1",
-      "commit": "23eb6f3b1173cd2242b76143a59f4ab5ea82aa31",
-      "system_fingerprint": "fp_23eb6f3b1173_4404a471_cb1311",
+      "commit": "457d637f526eef25de4b9cf8c7c28a2f268e8d79",
+      "system_fingerprint": "fp_457d637f526e_0f3648c0_cb1311",
       "nvcc": "13.0.88",
       "cuda_arch": "sm_121",
-      "kernel_hash": "4404a47177875df6",
+      "kernel_hash": "0f3648c0848fc9a7",
       "cudart": "13.0",
       "cuda_driver": "13.0",
       "cublas": "13.1.1"
@@ -307,6 +307,57 @@
       "harness_run": "autoresearch-20261119-124313",
       "engine": "23eb6f3",
       "what": "prefill-1m on the final engine, score 0 by design",
+      "files": [
+        "metrics.txt",
+        "gates.txt",
+        "capacity.log",
+        "memwatch.txt"
+      ]
+    },
+    {
+      "dir": "harness-runs/run14-a9d01bc-markov-walk",
+      "harness_run": "autoresearch-20261119-134328",
+      "engine": "a9d01bc",
+      "what": "drafter Markov walk kernels (bit-identical hashes); decode 47.03 -> 48.05; score 0.6025",
+      "files": [
+        "metrics.txt",
+        "gates.txt",
+        "capacity.log",
+        "memwatch.txt",
+        "bench-main.json"
+      ]
+    },
+    {
+      "dir": "harness-runs/run15-457d637-narrow-ku12",
+      "harness_run": "autoresearch-20261119-145257",
+      "engine": "457d637",
+      "what": "narrow linear: 12 chunks of loads in flight, 8-column kernel by default; score 0.6139",
+      "files": [
+        "metrics.txt",
+        "gates.txt",
+        "capacity.log",
+        "memwatch.txt",
+        "bench-main.json"
+      ]
+    },
+    {
+      "dir": "harness-runs/run16-457d637-clean-build",
+      "harness_run": "autoresearch-20261119-161625",
+      "engine": "457d637",
+      "what": "the same commit on a verified clean build (gb-cuda recompiled); reproduces run 15: score 0.6143",
+      "files": [
+        "metrics.txt",
+        "gates.txt",
+        "capacity.log",
+        "memwatch.txt",
+        "bench-main.json"
+      ]
+    },
+    {
+      "dir": "harness-runs/1m-457d637",
+      "harness_run": "autoresearch-20261119-155341",
+      "engine": "457d637",
+      "what": "prefill-1m on the final engine (clean build), score 0 by design",
       "files": [
         "metrics.txt",
         "gates.txt",

@@ -15,6 +15,9 @@ Engine candidates: worktree `~/projects/rexl3-inkling2-ar` (branch `inkling2-ar`
       numbers are in `bench/records/2026-11-19-segment-a-final/`
 - [x] byte-for-byte logits check of `f4e27ca` against the engine, lanes off and on, on `dc9b356` and again on the final `b1c4de1` (record, `bitwise-logits.txt`)
 - [x] 1M benchmark on `44cd901` (pin and memory PASS, 793 tok/s); to be re-run on the final engine of the second kernel pass
+- [x] fourth and fifth passes (runs #14 to #16): drafter Markov walk kernels, the batched narrow linear, the grid sizing's confirmation; measured and dropped: the 128 x 128 wide linear,
+      deeper MoE gemv prefetch, load cache hints (section "Fourth to sixth passes")
+- [x] final checks on builds proved clean: byte-for-byte logits 48/48, 1M prefill 818 tok/s with pin and memory PASS, a confirmation full run (#16) reproducing #15
 - [ ] open items: "What is left" below (none started)
 
 ## Baseline (unmodified `f4e27ca`, eager, clocks locked at 2200 MHz)
@@ -140,7 +143,7 @@ Revised order for Segment A (every item keeps arithmetic order, so `pin`, `spec`
 | 7 | Prefill: `plan_kernel` (1 CTA, 2.2 ms, 383 launches) parallelized | 0.8 s | about -0.7 s |
 | 8 | Prefill, 256K: global attention (`attn_kernel`, int8 dequant per tile): stage dequantized K/V tiles in shared memory per CTA group without changing the online-softmax order | 51.3 s of 240 s at 256K (21%); in the last chunks 1.5 s of each 4.4 s chunk, about 190 ms per global layer `[INFERENCE: local layers are cheap]` | up to -20 s at 256K if the kernel reaches 2x `[INFERENCE]`; grows with context |
 
-Measured (run #13, final engine `23eb6f3`, the final sweep): `target_score` 0.593; decode_c1 47.0 tok/s on average (47.32 in the full run, 47.46, 46.58, 46.77 in three more boots); decode per type prose 27.3, structured 31.1, json 57.5, code 73.4; c4 55.3, c8 62.8 (noisy); decode at 32K / 128K / 256K / 1M context 43.3 / 36.2 / 38.7 / 28.7; cold prefill at 32K / 128K / 256K / 1M 2,081 / 1,810 / 1,529 / 818 tok/s (run #10 on `b1c4de1`: 0.572 with decode 44.3; run #8 on `dc9b356`: 0.552). The original estimate of a Segment A ceiling (decode 55-60, prefill_32k 2,400-2,600, score 0.65-0.75) was not reached: the estimates above were upper bounds from the first profile, and items 2, 3 and 5 paid less than they assumed; the second kernel pass (runs #9 and #10) found +7% of prefill in two kernels the first pass had called near their peak, the third (runs #11 and #12) +6% of decode in launch overlap and L2 warming, which the first pass had bounded at 2%, and the grid sizing (run #13) +0.9% of prefill.
+Measured (run #16, final engine `457d637`, the final sweep on a verified clean build): `target_score` 0.614; decode_c1 50.2 tok/s on average over six boots (49.52, 49.65, 50.29, 50.45, 50.62 in run #15, 50.75 in run #16); decode per type prose 29.7, structured 33.6, json 61.3, code 78.4; c4 58.6, c8 64.6; decode at 32K / 128K / 256K / 1M context 46.0 / 38.6 / 40.8 / 29.9; cold prefill at 32K / 128K / 256K / 1M 2,082 / 1,810 / 1,534 / 818 tok/s (run #13 on `23eb6f3`: 0.593, decode 47.0; run #12: 0.592; run #10: 0.572; run #8: 0.552). The original estimate of a Segment A ceiling (decode 55-60, prefill_32k 2,400-2,600, score 0.65-0.75) was not reached; see the roofline below for decode.
 
 Status of each item (2026-11-19):
 
@@ -181,7 +184,53 @@ What it would buy, from the profile:
 
 The loop stays in Segment A; ask again before any Segment B work.
 
-## What is left (2026-11-19, after the third pass)
+## Fourth to sixth passes (2026-11-19)
+
+Runs #14 to #16. Each item says what was measured, not what was expected.
+
+**The drafter Markov walk (run #14).** The decode profile's chain per drafter step was `markov_step` 134 us, `markov_logits` 255 us and the top-1 exchange, about 0.63 ms a step and
+about 4.4 ms of a 77 ms round (an earlier pass had listed these as "small kernels"). Causes, from reading them: the step kernel is one block per request whose warps each run 96 row
+iterations in sequence, every iteration loading 16 scalar bf16 and reading `inp[lane * 16 + k]` from shared memory (stride 16 words: a 16-way bank conflict); the logits kernel ran
+the double-precision `tanh` (FP64 at 1/64 rate) on lane 0 of every warp and re-read the weights per request (228 us for one request, 900 us for four). The rewrite keeps every sum's
+order: a synthetic bench (`bench_markov_walk`, `inkling2_ops.rs`, `#[ignore]`) prints FNV hashes of state, latent and logits after the 7-step walk, identical to the old kernels' for one and four requests,
+and the drafter tests (11, with the golden hashes on the real weights and the oracle comparison) pass with PDL off and on. Per step on the synthetic walk: step 120 -> 58-70 us, logits 228 -> 67-70 us
+(one request) and 900 -> 111-115 us (four). In the engine the chain is about 200 us a step; decode_c1 47.03 -> 48.05 (five boots 47.57-48.73), c4 55 -> 57; `decode_acceptance` (0.4134) and tokens a round
+(3.0431) are unchanged, which is the check that matters here because drafted tokens only move acceptance and the reply pin cannot see a drafter arithmetic change. Left: the step kernel is still one block
+(66 us); splitting it over eight blocks of 32 output indices needs a ping-pong state buffer (every block reads the whole state while its own 32 are rewritten): about -35 us a step, 0.3 ms a round.
+
+**The narrow linear (run #15).** The wide linear's profile had pointed at L2 (77%), so a 128 x 128 tile was tried first (below); the decode linears turned out to be the better target. A bench that
+reads DRAM-resident weights (`bench_narrow_kernels`: each shape in enough copies for about 400 MB, launches cycling through them; an L2 flush with `read_probe` left part of the smaller matrices
+in L2 and made 14-30 MB shapes look like 300-1000 GB/s) showed the unembed at 206-210 GB/s against 247-258 for a plain stream. Issuing the loads of `KU` consecutive 32-wide chunks before their
+multiply-accumulates (every output's chunk order unchanged) with `KU` = 12 gave, in GB/s, unembed 210 -> 233, w_q 247 -> 260-270, w_o 203 -> 216-230, q 206 -> 219, router 163 -> 182. The result is not
+monotonic in `KU` (unembed with the 8-column kernel: 1: 211, 2: 209, 3: 215, 4: 209, 6: 229, 8: 211, 9: 208, 10: 235, 12: 233, 14: 233, 16: 232, 18: 206): it follows the compiler's register allocation (the
+8-column kernel uses 179 registers, one block an SM), so re-measure after any change. `ld.global.nc.L1::no_allocate` and the `L2::128B` / `L2::256B` hints on the weight loads changed nothing (206-207 GB/s).
+The engine gain (+4%: decode_c1 48.05 -> 50.0 over five boots, c8 62 -> 67) is larger than the per-kernel arithmetic (about 0.8 ms of 70) predicts: the profile's per-kernel durations include PDL waits,
+so these kernels cost more of the critical path than they looked. Tests: the linear invariance test (narrow = thin = wide = first wide at every row slice of six shapes and four output modes), inkling2_ops / attn /
+moe / dspark and the five goldens.
+
+**Measured and dropped.**
+- *The 128 x 128 wide linear* (`lin_wide3_kernel`, 8 warps of 32 x 64, two or three `cp.async` stages, MMAs reordered so dependent steps are eight apart): +1-4% on the big shapes, worse on the small ones, 255 registers
+  with a 56-byte stack. The L2 hypothesis was wrong (L2 47% for the new tile). `mma.sync` bf16 with fp32 accumulate peaks at about 107 TFLOP/s on this part at 2,190 MHz (register-only loop; cuBLAS reaches 93), against
+  47-60 for the staged kernels. Ablation of the 128 x 128 kernel (q-rank shape, 2,048 rows, us): 464.6 as built; no global copies 420.4; no shared-memory loads 415.1; no barrier 391.4; copies, loads and barrier all
+  removed 354.0 (82 TFLOP/s). The barrier alone costs 16%. A real gain needs a warp-specialised producer / consumer pipeline on mbarriers, which does not fit in 255 registers with the segment totals; about +3% on the
+  big shapes against the staged kernel, below the engine's noise. Not kept; `bench_wide_kernels` (interleaved, best of five rounds) stays.
+- *Deeper MoE gemv prefetch* (a ring of 2, 3 or 4 steps in `moe_gemv_kernel`): the gemv reads 214-228 GB/s (nsys, real durations; ncu inflates these kernels 2.3x with its clock control) and depth 3 was 5% faster in two
+  of three alternating pairs and equal in the third, slower at 4 rows. Plateau; not kept.
+- *Grid-order and cache-hint experiments* for the narrow linear: none.
+- *GPU idle*: 2.1-2.8% of a decode round (1.4-1.8 ms), of which about 0.45 ms is the host turnaround after the last `merge_kernel` of a round. Nothing to take.
+
+**Decode roofline (an estimate, stated as one).** A c=1 round reads about 14 distinct experts a layer (8 rows x 8 picks over 4 ranks) at 15.9 MB, plus about 50 MB of dense weights a layer, 48 layers, plus the 463 MB
+unembed: about 13.7 GB, or about 53 ms at the 258 GB/s a plain stream reaches. A round is about 60 ms at 50 tok/s with 3.04 tokens a round: the engine is within roughly 12% of that floor, and most of what is
+left is the time ranks wait for the slowest one inside the all-reduces. Decode in Segment A cannot approach 70 tok/s.
+
+**The build trap.** After run #15 the checks failed: the logits comparison differed on every rank and the first 1M attempt failed its pin gate with `prefill slice of slot 0: CUDA error 1`. Booting the pinned `f4e27ca`
+failed the same way, so it was not the engine. `inkling2.sh build` extracts `git archive` output, whose files all carry the commit's time; cargo trusts file times; my lab builds on rank 0 (rsync'd sources,
+`REXL3_COMMIT=lab`, the same `target`) had left artifacts newer than any commit, so the next build recompiled only gb-server (13.6 s) and linked stale gb-cuda and gb-model. The commits were fine: after a purge
+of the `gb-*` artifacts a rebuild served normally, and `cmd_build` now touches the extracted sources so the gb-* crates always rebuild (about 100 s). The checks were then redone on builds that each compiled all ten
+gb-* crates (the logits script prints it): 48/48 identical, 1M pin and memory PASS, and run #16 reproduced run #15. Runs #13 to #15 were built when each build took about 100 s (a full rebuild) and #16 matches #15,
+which is the evidence that they were genuine. Lab builds belong in their own tree and target directory.
+
+## What is left (2026-11-20, after the sixth pass)
 
 Nothing below is started. Each needs a screen first (`PHASES=warm,decode`, `warm,prefill-32k`; decode screens spread by boot, so take several) and a
 full run only to keep it.
@@ -192,8 +241,9 @@ full run only to keep it.
    to them: repeats inside a boot agree, pinning changes nothing) and simple allocation randomness (the isolated L2 bench in eight fresh processes: 281-287 us without the warm,
    214-224 us with 16 MB). Left as guesses: the NCCL path or channel assignment of a boot, or the physical placement of the weights against the L2 sets inside the engine. If a cause
    is found, fixing it puts every boot at the good mode (+1.5% over the mean).
-2. Decode: PDL for the drafter chain (`add_norm`, `ctx_kv`, `block_prep`, `attn_part` / `attn_merge`, `silu_mul`, `markov_*`, the wide linears) and the shared
-   glue (`rmsnorm`): 163 of the 1,301 launches a round; about 0.5% at 2.6 us a launch.
+2. Decode: PDL for the rest of the drafter chain (`add_norm`, `ctx_kv`, `block_prep`, `attn_part` / `attn_merge`, `silu_mul`, the wide linears) and the shared
+   glue (`rmsnorm`): about 150 launches a round (`markov_*` are done); about 0.5% at 2.6 us a launch, below what a four-boot screen can show.
+2b. Decode: split `markov_step` over eight blocks per request with a ping-pong state buffer (about 0.3 ms a round), and a per-shape `KU` for the narrow linear (w_o preferred 14, w_q 10-12).
 3. Decode: warm more of the weights during the all-reduces (the next layer's `w_k` and `w_v`, 2.4 MB each; at 24 MB of `w_q` the L2 lost, so the budget is
    about 16-20 MB a window), and the experts are unknown until the router has run.
 4. Decode: walk truncation (`BudgetPolicy::Plan` already asks the drafter for `ProposeRequest.max` drafts; the Inkling backend runs all 7 steps and the round cost
@@ -224,6 +274,9 @@ of `f4e27ca`). Lab branches of the engine worktree that hold measured-and-droppe
 | #11 | `a8a7602` | programmatic dependent launch (PDL) on by default for the MoE decode chain (mask bit 4, existing) and a new bit 8 for the dense chain (narrow linear, mix, conv, attention, router select, vocabulary, all-reduce sum); each such kernel waits for its predecessor before any access; timing only | 0.5820 | 45.97 | 2,063 / 1,793 / 1,519 | 11/11 |
 | #12 | `fbc7a1a` (tree of `72d8d10`) | decode windows load the next layer's first 16 MB of `w_q` and the layer's router gate through L2 on a second stream during the two all-reduces; no value changes | 0.5917 | 47.52 | 2,063 / 1,794 / 1,518 | 11/11 |
 | #13 | `2f36f23` (engine `23eb6f3`) | MoE prefill gate/up and down launches get the blocks each class's items can fill (`class_grid`: `min(E, P)` for the 1- and 2-tile classes, `item_cap` for the 3-4-tile class) instead of the 4,096-row scratch capacity; same items, same bits | 0.5931 | 47.32 | 2,081 / 1,810 / 1,529 | 11/11 |
+| #14 | `a9d01bc` | DSpark drafter Markov walk: the step kernel with 128-bit weight loads, eight rows in flight and its inputs in registers (the old code read `inp[lane*16+k]` from shared memory at a stride of 16 words: a 16-way bank conflict); the logits kernel with 32 rows a warp, the double-precision `tanh` epilogue on all 32 lanes (it ran on one) and each loaded row shared by up to four requests; both launched with PDL. Same arithmetic order: hashes of state, latent and logits identical | 0.6025 | 48.73 | 2,086 / 1,811 / 1,533 | 11/11 |
+| #15 | `457d637` | narrow bf16 linear: the loads of 12 consecutive k chunks are issued before their multiply-accumulates (same chunk order per output) and the 8-column kernel is the default for every narrow launch | 0.6139 | 50.62 | 2,085 / 1,812 / 1,534 | 11/11 |
+| #16 | `457d637` | the same commit on a verified clean build (all ten gb-* crates recompiled; see "The build trap"): reproduces #15 | 0.6143 | 50.75 | 2,082 / 1,810 / 1,534 | 11/11 |
 
 Lane profile (rank 0, cold 32K, 17.2 s, `--trace=cuda`): comm kernels 10.3 s of which 84% run under compute (1.7 s exposed); compute is 13.55 s on rank 0 and 16.0 s on rank 3 (experts E mod 4 give rank 3 about 12% more MoE rows), so the group is paced by rank 3. Splitting the rows makes the MoE kernels about 25% slower in total (gateup 2.0 ms per 2,048-row lane against 2.75 ms per 4,096-row chunk). Prefill is within about 7% of rank 3's compute: only kernel work helps from here.
 

@@ -227,6 +227,10 @@ measurements, not at the end.
 - gb-model lib tests need the gitignored `testdata/nemotron_omni/moe/layer1_fixture{,_repaired}.safetensors`. Create
   empty placeholders for the run and delete them; never commit them.
 - The engine's auto KV pool (5.77M tokens) left rank 0 too tight. Keep `KV_TOKENS = SLOTS × MAX_MODEL_LEN`.
+- Lab builds must not share the engine's cargo target directory or source tree on rank 0. `git archive` stamps every file with the commit's time, cargo trusts file
+  times, and a lab build (rsync'd sources, `REXL3_COMMIT=lab`) leaves artifacts newer than any commit: the next `inkling2.sh build` then recompiled only gb-server and linked
+  the stale gb-cuda / gb-model (two different commits both returned CUDA error 1 on their first prefill, and a logits check and a 1M run failed). `cmd_build` now touches the
+  extracted sources so the gb-* crates always rebuild (about 100 s); lab builds belong in their own tree and `CARGO_TARGET_DIR`. A build that took 15 s was not a build.
 - Rank 0 alone carries the vision tower (1.06 GiB plus a 0.56 GiB reserve). Lowering `--max-image-tokens` buys memory
   if a Segment A change needs it.
 

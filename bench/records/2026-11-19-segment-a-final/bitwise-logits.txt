@@ -46,3 +46,15 @@ capacity): same prompt, same three boots, boots of A = f4e27ca again: all 48 com
 
 Final sweep (engine 23eb6f3, 2026-11-19): decode_c1 over four boots 47.32 (full run), 47.46, 46.58, 46.77 (mean 47.03); the full run: per type prose 27.34, structured 31.10, json 57.48,
 code 73.37; c4 55.30, c8 62.75; decode at 32K / 128K / 256K / 1M context 43.34 / 36.21 / 38.72 / 28.70 tok/s; cold prefill 32K / 128K / 256K / 1M 2,081 / 1,810 / 1,529 / 818 tok/s.
+
+
+Fifth run, 2026-11-19 after the Markov walk kernels and the batched narrow linear (engine 457d637), on builds proved clean. The first attempt of this check failed for a reason that
+is not the engine: after the lab builds of that session the shared cargo target directory on rank 0 held artifacts newer than the archived sources of any commit, so `inkling2.sh
+build` recompiled only gb-server and linked the stale gb-cuda and gb-model (the 'build' of f4e27ca and of 457d637 both returned CUDA error 1 on the first prefill; every comparison
+differed because no dump was written). After a purge of the gb-* artifacts and the `touch` fix in `inkling2.sh cmd_build` each build compiled all ten gb-* crates (the script now prints
+it) and the same prompt gave: boots of A = f4e27ca, 457d637 with the full dump, 457d637 with REXL3_INKLING2_DUMP_LOGITS_ONLY=1: all 48 comparisons identical (4 ranks x 6 files x 2 engines),
+0 differing; request wall time 13.1 s, 10.8 s and 6.9 s.
+
+Final sweep (engine 457d637, 2026-11-19): decode_c1 over six boots 49.52 / 49.65 / 50.29 / 50.45 / 50.62 (run 15) / 50.75 (run 16), mean 50.2; run 16: per type prose 29.69, structured 33.61,
+json 61.29, code 78.39; c4 58.63, c8 64.65; decode at 32K / 128K / 256K / 1M context 45.97 / 38.58 / 40.83 / 29.91 tok/s; cold prefill 32K / 128K / 256K / 1M 2,082 / 1,810 / 1,534 / 818 tok/s;
+score 0.6143, 11 of 11 gates; 1M: pin and memory PASS (9.31 GiB normalised).
