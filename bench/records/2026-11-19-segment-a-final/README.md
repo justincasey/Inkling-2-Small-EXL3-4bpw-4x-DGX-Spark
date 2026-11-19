@@ -20,4 +20,4 @@
 | 12 | 72d8d10 | L2 warm of w_q and the router gate in decode windows | 0.5917 | 47.52 | 2,063 / 1,794 / 1,518 |
 
 All eleven runs: 11 of 11 gates. `1m-*`: cold 1,008,317-token prefill, 4 x 1,048,576-token lanes, pin and memory PASS (793 tok/s on
-both engines); the 1M runs of the later engines `1m-b1c4de1` and `1m-72d8d10`: 814 and 815 tok/s, pin and memory PASS. Run 12's decode_c1 of 47.52 is a good boot: nine boots of that build gave 46.3-47.7 (mean 46.9), see the exec plan.
+both engines); the 1M runs of the later engines `1m-b1c4de1` and `1m-72d8d10`: 814 and 815 tok/s, pin and memory PASS. Run 12's decode_c1 of 47.52 is a good boot: eleven boots of that build gave 46.3-47.7 (mean 47.0), see the exec plan.

@@ -34,5 +34,7 @@ REXL3_INKLING2_DUMP_LOGITS_ONLY=1 7.3 s. The dump is prefill only: the decode ch
 tokens of context, 2.4K+ decoded tokens in all) and the spec, cache, chunk and needle gates of runs 11 and 12 and by the kernel tests run with the PDL mask
 off and with every bit on (inkling2_ops 13, inkling2_attn 10, inkling2_moe 6, the dspark and vision goldens).
 
+Interleaved decode screens, PDL off / on / off / on (REXL3_GLM_PDL=0 or the default; the L2 warm on in all four): decode_c1 44.83, 47.53, 44.91, 47.57.
+
 PDL ordering (2026-11-19, engine tests/pdl_order.rs): a PDL-attributed launch right after a cudaStreamWaitEvent (the lane-mode prefill's first conv of a lane half) or after a memcpy
 did not read ahead of them in 2,000 iterations of each (0 stale; the control without the wait: 199 of 200 stale).
