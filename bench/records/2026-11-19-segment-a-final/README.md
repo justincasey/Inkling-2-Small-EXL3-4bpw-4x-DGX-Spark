@@ -1,6 +1,6 @@
 # Segment A (bit-preserving speed), final state
 
-`meta.json`: the installed final engine (b1c4de1, a lab build off the pinned f4e27ca). `harness-runs/`: each kept harness run of the session
+`meta.json`: the installed final engine (72d8d10, a lab build off the pinned f4e27ca). `harness-runs/`: each kept harness run of the session
 (`./autoresearch.sh`, `bench/runs/autoresearch-*`, gitignored) with its metrics, gates, capacity plan, memwatch and the raw bench data;
 `bitwise-logits.txt`: the byte-for-byte logits check. The numbers quoted in `docs/exec-plans/active/autoresearch-segment-a.md`,
 `docs/AUTORESEARCH-HANDOFF.md` and the README come from these files.
@@ -16,6 +16,8 @@
 | 08 | dc9b356 | HEAD after the env-gated logits-only dump (no performance change) | 0.5519 | 44.35 | 1,923 / 1,686 / 1,443 |
 | 09 | 6f04cbc | MoE prefill A fragments one step ahead (MCG experts) | 0.5572 | 44.25 | 1,965 / 1,716 / 1,465 |
 | 10 | b1c4de1 | staged wide linear, L2-grouped blocks | 0.5718 | 44.27 | 2,068 / 1,798 / 1,524 |
+| 11 | a8a7602 | PDL on the MoE and dense decode chains (default on) | 0.5820 | 45.97 | 2,063 / 1,793 / 1,519 |
+| 12 | 72d8d10 | L2 warm of w_q and the router gate in decode windows | 0.5917 | 47.52 | 2,063 / 1,794 / 1,518 |
 
-All nine runs: 11 of 11 gates. `1m-*`: cold 1,008,317-token prefill, 4 x 1,048,576-token lanes, pin and memory PASS (793 tok/s on
-both engines); the 1M run of the final engine `1m-b1c4de1`: 814 tok/s, pin and memory PASS.
+All eleven runs: 11 of 11 gates. `1m-*`: cold 1,008,317-token prefill, 4 x 1,048,576-token lanes, pin and memory PASS (793 tok/s on
+both engines); the 1M runs of the later engines `1m-b1c4de1` and `1m-72d8d10`: 814 and 815 tok/s, pin and memory PASS. Run 12's decode_c1 of 47.52 is a good boot: nine boots of that build gave 46.3-47.7 (mean 46.9), see the exec plan.

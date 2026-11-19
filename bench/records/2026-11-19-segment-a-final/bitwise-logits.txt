@@ -25,3 +25,11 @@ again (4 ranks x 6 files x 2 engines), 0 differing; request wall time A 11.1 s, 
 REXL3_INKLING2_DUMP_LOGITS_ONLY=1 (two lanes) 7.1 s. Beyond this check the kernels are covered by inkling2_ops (13 tests: the wide kernels equal the
 narrow and thin kernels bit for bit at every row slice of 4 shapes, 4 output modes, and the ops equal the oracle on the real weights), inkling2_moe
 (prefill == decode bit for bit, synthetic and the real layers 0 and 47) and the five goldens.
+
+
+Third run, 2026-11-19 after the decode pass (engine 72d8d10: programmatic dependent launch on by default for the MoE and dense decode chains, and the
+L2 warm of w_q and the router gate during the all-reduces of a decode window; same prompt, same three boots, boots of A = f4e27ca again): all 48
+comparisons identical (4 ranks x 6 files x 2 engines), 0 differing; request wall time A 11.1 s, 72d8d10 with the full dump 11.0 s, with
+REXL3_INKLING2_DUMP_LOGITS_ONLY=1 7.3 s. The dump is prefill only: the decode chain's PDL and warm are covered by the pin gate (replies up to 1,008,317
+tokens of context, 2.4K+ decoded tokens in all) and the spec, cache, chunk and needle gates of runs 11 and 12 and by the kernel tests run with the PDL mask
+off and with every bit on (inkling2_ops 13, inkling2_attn 10, inkling2_moe 6, the dspark and vision goldens).

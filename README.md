@@ -87,10 +87,10 @@ PHASES=prefill-1m ./autoresearch.sh      # the 1M-token prefill benchmark (about
 
 Scope: bit-preserving work only. The `oracle` gate (bit-changing kernel work) is not wired in; see the script's header.
 
-Segment A result (record `bench/records/2026-11-19-segment-a-final/`, engine `b1c4de1` against the pinned `f4e27ca`, all 11 gates): `target_score` 0.4422 to
-0.5718, decode (mean of four prompt types, one request) 42.2 to 44.3 tok/s, cold prefill at 32K / 128K / 256K 1,298 / 1,199 / 1,080 to 2,068 / 1,798 / 1,524 tok/s,
-cold 1M prefill 689 to 814 tok/s (4 x 1,048,576-token lanes, memory gate passed). Every row's logits of a 9,292-token prompt are byte-identical
-to the pinned engine's on all four ranks (`bitwise-logits.txt`). The 70 tok/s and 4,000 tok/s targets are not met.
+Segment A result (record `bench/records/2026-11-19-segment-a-final/`, engine `72d8d10` against the pinned `f4e27ca`, all 11 gates): `target_score` 0.4422 to
+0.5917, decode (mean of four prompt types, one request) 42.2 to 47.5 tok/s (46.3-47.7 over nine boots of the final build, mean 46.9), cold prefill at 32K / 128K / 256K
+1,298 / 1,199 / 1,080 to 2,063 / 1,794 / 1,518 tok/s, cold 1M prefill 689 to 815 tok/s (4 x 1,048,576-token lanes, memory gate passed). Every row's logits of a
+9,292-token prompt are byte-identical to the pinned engine's on all four ranks (`bitwise-logits.txt`). The 70 tok/s and 4,000 tok/s targets are not met.
 
 ## Known gaps (next phase)
 
