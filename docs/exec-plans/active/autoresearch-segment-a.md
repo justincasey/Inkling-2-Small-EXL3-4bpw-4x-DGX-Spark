@@ -161,6 +161,13 @@ keep one. Before any final claim run the 1M benchmark (`PHASES=prefill-1m`).
 | #3 | `8bd0ed5` | prefill all-reduce as reduce-scatter + all-gather for messages >= 2 MiB (`NcclComm::rsag_sum_f32`, `GroupComm::sum`): same rank-order sum, same bits, half the network bytes | 0.5071 | 42.14 | 1,709 / 1,528 / 1,339 | 11/11 |
 | #4 | `50bdb1f` | MoE plan of the prefill from the multi-block planner already in `moe_prefill.cu` (`PrefillScratch::use_parallel_plan(true)`, the Qwen Flash-Next setting): same plan, 2.2 ms a layer less | 0.5160 | 42.08 | 1,772 / 1,577 / 1,375 | 11/11 |
 
+| #5 | `e0ee556` | draft budget `BudgetPolicy::Curve` over a measured round-cost grid (`engine.rs` `round_cost`; one stream measured, two or more flat = every draft verified as before): prose 22.0 to 24.8, structured 26.4 to 28.5 tok/s | 0.5248 | 43.41 | 1,777 / 1,573 / 1,372 | 11/11 |
+| #6 | `8ee0fe3` | a prefill chunk of 1,024+ rows as two lanes (`Inkling2Rank::forward_lanes`): row views of the step buffers, layers interleaved A.pre B.pre A.mid B.mid, the four collectives of a layer on a comm stream under the other lane's compute | 0.5450 | 43.33 | 1,920 / 1,684 / 1,441 | 11/11 |
+
+Lane profile (rank 0, cold 32K, 17.2 s, `--trace=cuda`): comm kernels 10.3 s of which 84% run under compute (1.7 s exposed); compute is 13.55 s on rank 0 and 16.0 s on rank 3 (experts E mod 4 give rank 3 about 12% more MoE rows), so the group is paced by rank 3. Splitting the rows makes the MoE kernels about 25% slower in total (gateup 2.0 ms per 2,048-row lane against 2.75 ms per 4,096-row chunk). Prefill is within about 7% of rank 3's compute: only kernel work helps from here.
+
+Measured and dropped: NCCL `PROTO` LL / LL128, `MAX_NCHANNELS` 2 / 8, `P2P_NET_CHUNKSIZE` 256K / 512K / 1M (all within noise); `lin_narrow` unroll 4 (+0.9%, noise); a highest-priority comm stream (no effect); the Curve estimator's decay 0.97 with prior weight 2 to 4 (+0.5 to 0.6%, noise level).
+
 Profile of a cold 256K prefill on `8bd0ed5` (rank 0, 196 s, after run #3): attention 51.5 s (26.5%), NCCL 49.9 s (25.6%, was 81.1 s;
 7.9 ms per all-reduce, two phases of 3.9 ms), MoE gateup+down 38.0 s (19.6%), `lin_wide` 20.5 s (10.6%), `mix_kernel` 6.8 s,
 `plan_kernel` 6.75 s (gone in run #4), `tp_sum_slots_vec_k` 4.9 s (was 18.6 s), `rot_in` 4.2 s, `conv` 4.0 s, `combine_f32` 3.0 s.
@@ -168,5 +175,5 @@ The measured all-reduce saving at 256K is 99.7 s to 54.8 s, against the 54 s est
 
 ## Not done
 
-- Decode is untouched: `decode_c1_tok_s` is 42.1 in every run (the changes above are prefill-only; decode messages stay one-shot).
+- Decode moved only through the draft budget (run #5); the collective and lane changes are prefill-only.
 - `oracle`, Segment B and other families' golden tests are not part of the harness.
