@@ -38,3 +38,11 @@ Interleaved decode screens, PDL off / on / off / on (REXL3_GLM_PDL=0 or the defa
 
 PDL ordering (2026-11-19, engine tests/pdl_order.rs): a PDL-attributed launch right after a cudaStreamWaitEvent (the lane-mode prefill's first conv of a lane half) or after a memcpy
 did not read ahead of them in 2,000 iterations of each (0 stale; the control without the wait: 199 of 200 stale).
+
+
+Fourth run, 2026-11-19 after the MoE grid sizing (engine 23eb6f3: each class's gate/up and down launch gets the blocks its picks can fill instead of the scratch's 4,096-row
+capacity): same prompt, same three boots, boots of A = f4e27ca again: all 48 comparisons identical (4 ranks x 6 files x 2 engines), 0 differing; request wall time A 11.0 s,
+23eb6f3 with the full dump 11.2 s, with REXL3_INKLING2_DUMP_LOGITS_ONLY=1 7.2 s.
+
+Final sweep (engine 23eb6f3, 2026-11-19): decode_c1 over four boots 47.32 (full run), 47.46, 46.58, 46.77 (mean 47.03); the full run: per type prose 27.34, structured 31.10, json 57.48,
+code 73.37; c4 55.30, c8 62.75; decode at 32K / 128K / 256K / 1M context 43.34 / 36.21 / 38.72 / 28.70 tok/s; cold prefill 32K / 128K / 256K / 1M 2,081 / 1,810 / 1,529 / 818 tok/s.
