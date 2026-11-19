@@ -186,7 +186,7 @@ The loop stays in Segment A; ask again before any Segment B work.
 Nothing below is started. Each needs a screen first (`PHASES=warm,decode`, `warm,prefill-32k`; decode screens spread by boot, so take several) and a
 full run only to keep it.
 
-1. Decode: understand the boot-to-boot spread of the L2 warm (46.3-47.7 over nine boots of one build against a tight 45.97-46.20 without it). If it is the
+1. Decode: understand the boot-to-boot spread of the L2 warm (46.3-47.7 over eleven boots of one build against a tight 45.97-46.20 without it). If it is the
    placement of the weights against the L2 sets, an allocation that avoids the bad case would put every boot at the good mode (+1.5% over the mean).
 2. Decode: PDL for the drafter chain (`add_norm`, `ctx_kv`, `block_prep`, `attn_part` / `attn_merge`, `silu_mul`, `markov_*`, the wide linears) and the shared
    glue (`rmsnorm`): 163 of the 1,301 launches a round; about 0.5% at 2.6 us a launch.
