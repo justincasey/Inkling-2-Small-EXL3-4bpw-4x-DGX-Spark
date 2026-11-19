@@ -17,3 +17,11 @@ What it covers: every row's final hidden state of the 9,292-token prompt on all 
 change, the MoE plan change and the two-lane path (views, per-lane attention plans, comm stream). Not covered: decode windows (the
 dump is prefill only): the thin lin_narrow tiles and the draft budget, which are covered by tests/goldens (linear row/kernel invariance
 test, five goldens) and by the pin/spec gates; contexts beyond 9K: the pin gate (32K, 128K, 256K and, in the 1m runs, 1M tokens).
+
+
+Second run, 2026-11-19 after the kernel pass (engine b1c4de1: the MoE prefill A-fragment prefetch for the MCG experts, and the staged, L2-grouped
+wide bf16 linear; same prompt, same three boots with b1c4de1 in place of dc9b356, boots of A = f4e27ca again): all 48 comparisons identical
+again (4 ranks x 6 files x 2 engines), 0 differing; request wall time A 11.1 s, b1c4de1 with the full dump (lanes off) 11.0 s, b1c4de1 with
+REXL3_INKLING2_DUMP_LOGITS_ONLY=1 (two lanes) 7.1 s. Beyond this check the kernels are covered by inkling2_ops (13 tests: the wide kernels equal the
+narrow and thin kernels bit for bit at every row slice of 4 shapes, 4 output modes, and the ops equal the oracle on the real weights), inkling2_moe
+(prefill == decode bit for bit, synthetic and the real layers 0 and 47) and the five goldens.

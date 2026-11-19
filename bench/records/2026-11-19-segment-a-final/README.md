@@ -1,6 +1,6 @@
 # Segment A (bit-preserving speed), final state
 
-`meta.json`: the installed final engine (dc9b356, a lab build off the pinned f4e27ca). `harness-runs/`: each kept harness run of the session
+`meta.json`: the installed final engine (b1c4de1, a lab build off the pinned f4e27ca). `harness-runs/`: each kept harness run of the session
 (`./autoresearch.sh`, `bench/runs/autoresearch-*`, gitignored) with its metrics, gates, capacity plan, memwatch and the raw bench data;
 `bitwise-logits.txt`: the byte-for-byte logits check. The numbers quoted in `docs/exec-plans/active/autoresearch-segment-a.md`,
 `docs/AUTORESEARCH-HANDOFF.md` and the README come from these files.
@@ -18,4 +18,4 @@
 | 10 | b1c4de1 | staged wide linear, L2-grouped blocks | 0.5718 | 44.27 | 2,068 / 1,798 / 1,524 |
 
 All nine runs: 11 of 11 gates. `1m-*`: cold 1,008,317-token prefill, 4 x 1,048,576-token lanes, pin and memory PASS (793 tok/s on
-both engines).
+both engines); the 1M run of the final engine `1m-b1c4de1`: 814 tok/s, pin and memory PASS.

@@ -2,7 +2,7 @@
   "name": "segment-a-final",
   "date": "2026-11-19",
   "recipe": {
-    "commit": "f150f548a814189ac05fe4362bb4019b06f463f8",
+    "commit": "456f9db05f8d3379151fdf6e71d79b270c722476",
     "uncommitted_files": 0
   },
   "pack": {
@@ -11,18 +11,18 @@
     "dir": "/home/spark/models/Inkling-2-Small-EXL3-4bpw"
   },
   "engine": {
-    "commit": "dc9b356bb54db1a3a2de202876810e17da2def8b",
-    "sha256": "8918df4e7aa402289b368c934cbdf6db5ccdb4b6cf94cf962e44ce9de024e8b8",
+    "commit": "b1c4de1fccef47227eae23edd4cfa836ca491b10",
+    "sha256": "56a2376f17c0c9be51a53ab2f1562e6849c8414d727a081e51e4071294db716e",
     "pinned_commit": "f4e27caec70da060df2a923097fb750a0880a653",
     "lab_build": true,
     "upstream_base": "06181b1d742912108361784257710806d9a75d18",
     "version": {
       "version": "0.1.1",
-      "commit": "dc9b356bb54db1a3a2de202876810e17da2def8b",
-      "system_fingerprint": "fp_dc9b356bb54d_a42fed21_cb1311",
+      "commit": "b1c4de1fccef47227eae23edd4cfa836ca491b10",
+      "system_fingerprint": "fp_b1c4de1fccef_01c29019_cb1311",
       "nvcc": "13.0.88",
       "cuda_arch": "sm_121",
-      "kernel_hash": "a42fed211b21c902",
+      "kernel_hash": "01c2901924307362",
       "cudart": "13.0",
       "cuda_driver": "13.0",
       "cublas": "13.1.1"
@@ -237,6 +237,18 @@
         "capacity.log",
         "memwatch.txt",
         "bench-main.json"
+      ]
+    },
+    {
+      "dir": "harness-runs/1m-b1c4de1",
+      "harness_run": "autoresearch-20261119-063446",
+      "engine": "b1c4de1",
+      "what": "prefill-1m screen on the final engine, score 0 by design",
+      "files": [
+        "metrics.txt",
+        "gates.txt",
+        "capacity.log",
+        "memwatch.txt"
       ]
     }
   ]
