@@ -92,7 +92,13 @@ Eight against five of 34 is not a significant difference; it is not evidence of 
 * The MXFP8 (e4m3) engine of this session is not kept: its quantizer and probe are in engine commits `4963e87` / `101bd67` (`REXL3_INKLING2_FAKE_ELEM=int8` there).
 * `scripts/lab/mma_peak.cu` (`kernels/mma_peak.txt`): on this GPU `mma.sync` e4m3 m16n8k32 runs at 215 TFLOP/s, twice bf16's 107.5, and the block-scaled form
   (`kind::mxf8f6f4`, ue8m0 scales) at the same 215: the prerequisite of Segment B2 holds. B2 itself was not started (see the plan).
-* A 1M-token prefill run on this engine (`PHASES=prefill-1m`).
+* (A 1M-token prefill run on this engine: done, see "1M tokens" below.)
+
+## 1M tokens
+
+`PHASES=prefill-1m` on `c4a3a26` (`harness-runs/prefill-1m-20261122-034942`, and again as the pin extension, `prefill-1m-pin-20261122-041741`): cold 1,008,317-token prefill on four 1,048,576-token lanes
+827.3 and 827.1 tok/s (Segment A's `58c91f2`: 830.4, `../2026-11-22-segment-a-v1/harness-runs/1m-58c91f2`), decode after it 31.49 tok/s (A: 31.23), lowest free memory 10.43 and 10.34 GiB (A: 9.85;
+floor 8), capacity and memory gates PASS. The pin gate of the first run failed only because the reference held no 1M entry; the second run wrote it (`PIN=1`, the already pinned entries reproduced).
 
 Files: `fidelity/` (each run's `fidelity.txt`), `quality-vs-spec/` (greedy.json, summary.txt and `cmp/*.json` for bf16, e4m3 real, int8 probe, int8 real), `harness-runs/` (screens and the pin run),
 `loop-probe/`, `kernels/`, `tests.txt`, the Segment A references (`reference*-segment-a.json`).

@@ -13,7 +13,7 @@ re-pin. Engine worktrees: `~/projects/rexl3-inkling2-b` (branch `inkling2-b`, th
 - [x] new references pinned (`config/pins.sh`, `bench/reference*.json` by `PIN=1`; Segment A's are in the B1 record)
 - [x] B1 engine `c4a3a26`: attention `w_q` / `w_o`, the unembed shard and the drafter's block projections as MXINT8; decode 2.0-2.4x faster per launch; replies equal the bf16 engine's on the dequantized weights bit for bit
 - [ ] **user decisions below**
-- [ ] 1M-token prefill on `c4a3a26` (`PHASES=prefill-1m`), before any claim of the final numbers
+- [x] 1M-token prefill on `c4a3a26`: 827.3 / 827.1 tok/s, decode 31.49 after it, lowest free memory 10.43 / 10.34 GiB, capacity and memory PASS; the 1M reply is pinned (record `README.md`, "1M tokens")
 - [ ] B2: not started; the measured prerequisites and an estimate are below
 
 ## Decisions for the user
