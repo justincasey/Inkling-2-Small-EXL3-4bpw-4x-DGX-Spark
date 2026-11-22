@@ -45,6 +45,13 @@ int main(int argc, char **argv) {
         }
         double za = 0, sa = 0, zb = 0;
         for (size_t i = 0; i < n; i++) {
+            if (!isfinite(a[i])) {  // the vocabulary tail the engine masks to -inf: it must be masked in B too, and it carries no probability
+                if (isfinite(b[i])) {
+                    fprintf(stderr, "row %zu column %zu: masked in A, not in B\n", rows, i);
+                    return 1;
+                }
+                continue;
+            }
             double e = exp((double)a[i] - ma);
             za += e;
             sa += e * ((double)a[i] - (double)b[i]);
