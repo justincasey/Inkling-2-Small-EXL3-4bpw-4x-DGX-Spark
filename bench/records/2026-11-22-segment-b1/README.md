@@ -87,7 +87,7 @@ near-tie decides a gate; int8 is also closer to bf16 in the routing sets (identi
 **Against int8, and what the choice rests on.** The choice rests on one fixture's near-tie (margin 0.1115 against the gate's 0.1) and on routing-set overlap, which a different draw of
 fixtures could reverse. The long-prompt drift cannot rank the formats (int8 3.8e-4 and e4m3 5.3e-4 mean KL, 52 and 49 flipped rows, although the unit tests bound the relative RMS weight error at 0.01 for int8 and 0.04 for e4m3: it saturates).
 On the harness's structured prompt the e4m3 engine did *not* loop (45.2 tok/s, `harness-runs/20261122-002017`, a normal runbook reply) while int8 does (78 tok/s, the canary line repeated); the
-34-prompt loop probe was run for bf16 and int8 only, never for e4m3 (its engine is not in the branch any more: commits `4963e87` / `101bd67`), so nothing says e4m3 loops less over a population.
+34-prompt loop probe was run for bf16 and int8 only, never for e4m3 (its engine is in the branch history, `90abc85` to `4963e87`; `06151f4` makes int8 the default), so nothing says e4m3 loops less over a population.
 An averaging measure was added afterwards (the NLL of the prompt's own next token, below) and was run for int8 only.
 
 ## The harness: 10 of 11 gates (`harness-runs/full-20261122-032109/gates.txt`; the pin run's agrees; the full run took 24 minutes, the `pin` gate: every reply of the second boot equals the pinned one)
@@ -108,7 +108,7 @@ Eight against five of 34 is not a significant difference; it is not evidence of 
 * The correctness gate of `docs/ORACLE-GAP.md` (`oracle/teacher_force.py` against the *emulating* oracle) was not run: it needs an `mxint8` emulation in
   `oracle/inkling2_ref.py`, and `oracle/` is off limits to the loop. The chain that stands in for it: the kernels equal the bf16 kernels on the dequantized weights (tests), the
   bf16 engine passed that gate (Segment A), the real engine equals the probe on 9,292 rows, and the format is cross-checked by an independent implementation.
-* The MXFP8 (e4m3) engine of this session is not kept: its quantizer and probe are in engine commits `4963e87` / `101bd67` (`REXL3_INKLING2_FAKE_ELEM=int8` there).
+* The MXFP8 (e4m3) engine of this session is in the engine branch's history, not at its tip: e4m3 is the host default from `90abc85` through `4963e87` (`REXL3_INKLING2_FAKE_ELEM=int8` there rounds through int8 in the probe); `06151f4` makes int8 the host default.
 * `scripts/lab/mma_peak.cu` (`kernels/mma_peak.txt`): on this GPU `mma.sync` e4m3 m16n8k32 runs at 215 TFLOP/s, twice bf16's 107.5, and the block-scaled form
   (`kind::mxf8f6f4`, ue8m0 scales) at the same 215: the prerequisite of Segment B2 holds. B2 itself was not started (see the plan).
 * (A 1M-token prefill run on this engine: done, see "1M tokens" below.)
