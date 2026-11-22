@@ -1,0 +1,10 @@
+control: 9292 rows
+  KL(ref||variant)   mean 0.000e+00   median 0.000e+00   p99 0.000e+00   max 0.000e+00
+  top-1 agreement    9292/9292 = 1.0000   (6879/6879 = 1.0000 of rows with margin >= 0.5)
+  disagreements by reference margin:  <0.05: 0  <0.1: 0  <0.25: 0  <0.5: 0  <1.0: 0  >=1.0: 0
+  NLL of the prompt's own next token (9291 rows): reference 0.7742   variant 0.7742   variant - reference +0.00000 +- 0.00000 (1 s.e.; t = +nan)
+int8: 9292 rows
+  KL(ref||variant)   mean 3.807e-04   median 4.675e-07   p99 8.568e-03   max 1.022e-01
+  top-1 agreement    9240/9292 = 0.9944   (6879/6879 = 1.0000 of rows with margin >= 0.5)
+  disagreements by reference margin:  <0.05: 44  <0.1: 50  <0.25: 51  <0.5: 52  <1.0: 52  >=1.0: 0
+  NLL of the prompt's own next token (9291 rows): reference 0.7742   variant 0.7740   variant - reference -0.00013 +- 0.00031 (1 s.e.; t = -0.40)

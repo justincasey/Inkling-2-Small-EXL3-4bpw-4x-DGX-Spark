@@ -66,6 +66,11 @@ Any one of the attention groups gives about the same drift as all of them: the m
 every row of the table but the unembed's, 1e-8), so the precision of the format moves it little. The 45 to 59 disagreeing rows of 9,292 of the attention variants all sit at a reference margin under 0.5
 (all-three e4m3: 49 rows, 45 of them under 0.05; int8: 52 rows, 44 under 0.05).
 
+**An averaging measure, the negative log-likelihood of the prompt's own next token** (`fidelity/int8-real-vs-bf16-nll`, the same 9,292-token prompt, 9,291 rows with a next token; flips average out, a
+systematic cost would show as a positive difference): bf16 0.7742, int8 0.7740, **int8 - bf16 = -0.00013 +- 0.00031** (1 standard error, t = -0.40); the control (the same build twice) 0 +- 0.
+No cost is detectable above about 0.0006 nats (2 s.e.), under 0.1% of the NLL. The limit of the measure: the prompt is the benchmark's synthetic filler text, which the model finds easy (NLL 0.77), not
+natural text; the same measure on a natural-language set would be the stronger evidence and was not run. It was run for int8 only (the e4m3 engine is not in the branch).
+
 **Against the spec oracle, the four fixtures of `docs/ORACLE-GAP.md`, `oracle/compare.py` with the `none` gate set** (`quality-vs-spec/`, `scripts/quality_vs_spec.sh`; the oracle
 is untouched; the Segment A engine is the control):
 
