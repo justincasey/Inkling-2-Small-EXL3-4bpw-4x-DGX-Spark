@@ -1,7 +1,7 @@
 #!/bin/bash
 # logit_fidelity.sh 'label|KEY=VAL ...' ...   how far the logits of engine variants are from an unmodified boot's, row by row, whole vocabulary.
 # One build of the HEAD of CANDIDATE_SRC (default the Segment B worktree), then one cold N-id prefill (N=9292, prefix cache off) on a reference boot (no
-# extra env) and on one boot per variant, all with REXL3_INKLING2_DUMP_LOGITS_ONLY=1 so each rank writes its logits shard of every row. Each rank then
+# extra env, or REF_ENV) and on one boot per variant, all with REXL3_INKLING2_DUMP_LOGITS_ONLY=1 so each rank writes its logits shard of every row. Each rank then
 # compares its shard of each variant with the reference's (scripts/logit_stats.c, compiled on the node), the small result files come back, and
 # scripts/logit_fidelity.py combines the four shards: KL(reference || variant) and top-1 agreement per row. A variant with an empty env is a control: it
 # must show KL 0 and agreement 1 (the same build twice is byte-identical). Results: .work/fid/STAMP/fidelity.txt.
@@ -26,7 +26,7 @@ boot() {  # name env
   DUMP_DIR=/home/spark/plp-fid-$1 EXTRA_ENV="REXL3_INKLING2_DUMP_LOGITS_ONLY=1 $2" ./inkling2.sh start 2>&1 | grep -E 'boot_s=|FAIL|fatal'
   python3 scripts/plp_req.py "$N" 2>&1 | tail -1
 }
-boot ref ""
+boot ref "${REF_ENV:-}"
 names=()
 for v in "$@"; do
   label=${v%%|*}; envs=${v#*|}; [[ $v == *'|'* ]] || envs=""
