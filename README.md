@@ -85,7 +85,13 @@ PHASES=warm,prefill-32k ./autoresearch.sh  # a screen: raw numbers, target_score
 PHASES=prefill-1m ./autoresearch.sh      # the 1M-token prefill benchmark (about 25 minutes), a screen
 ```
 
-Scope: bit-preserving work only (Segment A, complete). The `oracle` gate (bit-changing kernel work, Segment B) is not wired in; see the script's header.
+Scope: Segment A (bit-preserving, complete: tags `segment-a-v1` here and `inkling2-segment-a-v1` on the engine) and Segment B1 (bit-changing: the dense core as MXINT8,
+`bench/records/2026-11-22-segment-b1/`). The pins and references are B1's engine `c4a3a26` (`config/pins.sh`; Segment A's references are in the B1 record, the
+`segment-a-v1` tag holds the A pins). The `oracle` gate (`oracle/teacher_force.py` against the emulating oracle) is not wired in and was not run for B1: it needs an `mxint8`
+emulation in `oracle/`, which the loop may not edit; the spec-oracle drift gate (`scripts/quality_vs_spec.sh`) was run instead.
+
+Segment B1 (engine `c4a3a26`): 10 of 11 gates, the needle gate fails on its 128-token answer budget (the code is found in the reasoning). Like for like the decode is
++12 to +14% (the harness's `decode_c1` 54.1 to 69.0 includes one reply that falls into a repetition loop), cold prefill -0.6 to -0.9%, lowest free memory +0.96 GiB.
 
 Segment A result (record `bench/records/2026-11-22-segment-a-v1/`, engine `a73ff7a` against the pinned `f4e27ca`, all 11 gates): `target_score` 0.4422 to
 0.6464, decode (mean of four prompt types, one request) 42.2 to 54.1 tok/s, cold prefill at 32K / 128K / 256K 1,298 / 1,199 / 1,080 to 2,161 / 1,868 / 1,575 tok/s,
@@ -98,7 +104,8 @@ The experiments ran under `scripts/safeloop.sh`, which restores the last known-g
 
 - Decode runs eagerly (CUDA graphs would save at most about 2%: the idle time is 2.6 us launch gaps). Segment A (bit-preserving) work
   is recorded in `bench/records/2026-11-22-segment-a-v1/` and `docs/exec-plans/completed/autoresearch-segment-a.md`, with what was left undone.
-  Targets and ceilings: `docs/ROOFLINE.md`. The next phase (Segment B: the BF16 dense core in MXFP8, an FP8 MoE prefill) changes bits and needs a new pin.
+  Targets and ceilings: `docs/ROOFLINE.md`. Segment B (bit-changing, `docs/exec-plans/active/autoresearch-segment-b.md`): the int8 dense core is built and pinned but
+  not promoted (the needle gate's 128-token answer budget; decisions listed in the plan); the FP8 MoE prefill is assessed, not built.
 - `prompt_logprobs` is not served.
 - The pack's fingerprint is not in REXL3's validated list (`--allow-unvalidated-pack`).
 - REXL3 refuses `json_schema` / `json_object` response formats.

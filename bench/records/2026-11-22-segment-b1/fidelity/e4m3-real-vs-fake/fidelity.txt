@@ -1,0 +1,4 @@
+fp8: 9292 rows
+  KL(ref||variant)   mean 0.000e+00   median 0.000e+00   p99 0.000e+00   max 0.000e+00
+  top-1 agreement    9292/9292 = 1.0000   (6895/6895 = 1.0000 of rows with margin >= 0.5)
+  disagreements by reference margin:  <0.05: 0  <0.1: 0  <0.25: 0  <0.5: 0  <1.0: 0  >=1.0: 0

@@ -1,0 +1,6 @@
+scripts/lab/mma_peak.cu, nvcc -O3 -arch=sm_121a -DHAVE_MX, rank 0 (192.168.1.121), GPU locked at 2200 MHz by the site policy (the device reports 2418), safeloop cmd, 2026-11-22 01:51:
+NVIDIA GB10 sm_121, 48 SMs, clock 2418 MHz
+bf16 m16n8k16                          0.94 ms     107.5 TFLOP/s
+fp16 m16n8k16                          0.94 ms     107.5 TFLOP/s
+e4m3 m16n8k32                          0.94 ms     215.2 TFLOP/s
+e4m3 m16n8k32 block-scaled (ue8m0)     0.94 ms     215.0 TFLOP/s

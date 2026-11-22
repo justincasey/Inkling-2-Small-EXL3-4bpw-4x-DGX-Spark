@@ -1,0 +1,49 @@
+{
+ "url": "http://192.168.1.121:8000",
+ "model": "inkling-2-small-exl3-4bpw-4x-dgx-spark",
+ "date": "2026-11-22T09:01:38Z",
+ "tokens_per_sentence": 25.7745,
+ "lanes": [
+  {
+   "lane": 0,
+   "depth": 0.5,
+   "target_tokens": 200000,
+   "code": "OTTER-2624-OTTER",
+   "sentences": 7755,
+   "prompt_tokens_rendered": 210286,
+   "sizing": "render",
+   "admitted_s": 0.051,
+   "status": "answered",
+   "http_status": 200,
+   "admitted": true,
+   "prefill_s": 126.827,
+   "total_s": 128.209,
+   "finish_reason": "stop",
+   "usage": {
+    "prompt_tokens": 210286,
+    "completion_tokens": 90,
+    "total_tokens": 210376,
+    "prompt_tokens_details": {
+     "cached_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 76
+    },
+    "spec": {
+     "drafted": 109,
+     "accepted": 71,
+     "rounds": 18
+    }
+   },
+   "prompt_tokens": 210286,
+   "answer": "OTTER-2624-OTTER",
+   "reasoning_tail": "We need answer pass-code only. Need find in archive. We can search visually. The archive includes a line: \"Important notice: the secret pass-code is OTTER-2624-OTTER. Keep it safe.\" Need output exactly pass-code only. Ensure no extra words. Final should be OTTER-2624-OTTER.",
+   "found": true,
+   "found_in_reasoning": true
+  }
+ ],
+ "wall_s": 128.21,
+ "all_admitted": true,
+ "all_answered": true,
+ "pass": true
+}

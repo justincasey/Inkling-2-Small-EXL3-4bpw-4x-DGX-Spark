@@ -1,0 +1,49 @@
+{
+ "url": "http://192.168.1.121:8000",
+ "model": "inkling-2-small-exl3-4bpw-4x-dgx-spark",
+ "date": "2026-11-22T09:17:07Z",
+ "tokens_per_sentence": 25.7745,
+ "lanes": [
+  {
+   "lane": 0,
+   "depth": 0.9,
+   "target_tokens": 200000,
+   "code": "OTTER-2624-OTTER",
+   "sentences": 7755,
+   "prompt_tokens_rendered": 210286,
+   "sizing": "render",
+   "admitted_s": 0.062,
+   "status": "answered",
+   "http_status": 200,
+   "admitted": true,
+   "prefill_s": 118.654,
+   "total_s": 121.203,
+   "finish_reason": "stop",
+   "usage": {
+    "prompt_tokens": 210286,
+    "completion_tokens": 167,
+    "total_tokens": 210453,
+    "prompt_tokens_details": {
+     "cached_tokens": 20224
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 153
+    },
+    "spec": {
+     "drafted": 212,
+     "accepted": 131,
+     "rounds": 35
+    }
+   },
+   "prompt_tokens": 210286,
+   "answer": "OTTER-2624-OTTER",
+   "reasoning_tail": " rainy Tuesday (entry 1000-6979). Important notice: the secret pass-code is OTTER-2624-OTTER. Keep it safe. The archivist inspected 333 old ledgers inside the greenhouse late in the evening (entry 1000-6980).\" So pass-code is OTTER-2624-OTTER. Need final answer only pass-code. Ensure no extra words.",
+   "found": true,
+   "found_in_reasoning": true
+  }
+ ],
+ "wall_s": 121.203,
+ "all_admitted": true,
+ "all_answered": true,
+ "pass": true
+}

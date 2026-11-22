@@ -10,8 +10,9 @@ experiment is run inside it. The tools are in `scripts/`; their state is machine
 | Part | What it is |
 |---|---|
 | `~/projects/rexl3-inkling2-a` (branch `inkling2-a`) | The validated line of the engine: every commit on it passed the full harness (it is only fast-forwarded to a commit that did). Default `CANDIDATE_SRC` of the scripts. |
-| `~/projects/rexl3-inkling2-dev` (branch `inkling2-a-dev`) | Where code is written and committed. Never the target of a cluster run that is still in flight. |
+| `~/projects/rexl3-inkling2-dev` (branch `inkling2-a-dev`, then `inkling2-b-dev` for Segment B) | Where code is written and committed. Never the target of a cluster run that is still in flight. |
 | `~/projects/rexl3-inkling2-screen` (detached) | A frozen checkout for screens: `autoresearch.sh` builds the HEAD of its `CANDIDATE_SRC` at the start of **every** run, so a commit made in the dev tree during a multi-boot screen silently changes the later boots. Point screens here and `git checkout --detach SHA` it. |
+| `~/projects/rexl3-inkling2-b` (branch `inkling2-b`) | Segment B's frozen line: fast-forwarded to the dev branch's commit before a run; the scripts of Segment B default to it. |
 | `.work/safeloop/state.env` | `GOOD_SHA`, `GOOD_FALLBACK`, `GOOD_SCORE`, `GOOD_DATE`: the known-good engine and the one before it. Seed it by hand once from a commit with a logged 11/11 run. |
 | `.work/safeloop/history.log` | One line per run, restore and promotion. |
 | `scripts/safeloop.sh` | The wrapper (below). |
@@ -19,6 +20,10 @@ experiment is run inside it. The tools are in `scripts/`; their state is machine
 | `scripts/ops_dev.sh`, `scripts/quad_dev.sh` | The engine's single-node GPU tests (rank 0's lab tree and target directory, never the engine's) and the four-rank exactness test. |
 | `scripts/logits_check.sh`, `scripts/plp_req.py` | The byte-for-byte logits check against the pinned engine. |
 | `scripts/ops_dump_smoke.sh` | The oracle's op-level dump path on four ranks (rank-symmetry of the collectives). |
+| `scripts/logit_fidelity.sh`, `logit_stats.c`, `logit_fidelity.py` | KL and top-1 of engine variants against a reference boot, per row over the whole vocabulary (`REF_ENV` sets the reference's env); a control (same build twice) must show 0. |
+| `scripts/quality_vs_spec.sh` | The engine's drift from the spec oracle on the four fixtures of `docs/ORACLE-GAP.md` (`oracle/compare.py`, `none` gate set), `oracle/` untouched. |
+| `scripts/loop_probe.{sh,py}` | 34 prompts, 512 greedy tokens each: repetition loops, first difference between two engines, speed; `NEEDLE=1` adds 200K needles with a 512-token budget. |
+| `scripts/lab/mma_peak.cu` | Register-only `mma.sync` throughput per operand type (the ceiling kernels are measured against). |
 
 ## `scripts/safeloop.sh`
 
@@ -57,7 +62,8 @@ safeloop.sh restore                              install the known-good engine a
 
 - It does not touch `config/pins.sh`, `bench/reference*.json`, `oracle/`, the gate thresholds or the memory guard's floors (off limits since the first session).
 - It cannot recover from a node that is down or from a lost network: `ensure_good` fails loudly (`RESTORE-FAILED` in the history, exit 1) and the cluster is left stopped.
-- It does not run the oracle gate: bit-changing work (Segment B) needs a new pin and the oracle flow of `docs/ORACLE-GAP.md`.
+- It does not run the oracle gate: bit-changing work (Segment B) needs a new pin and the oracle flow of `docs/ORACLE-GAP.md`. Segment B1's re-pin (`config/pins.sh`, `bench/reference*.json`) was made by hand,
+  authorised by the user, never by the loop, and nothing of B was promoted; the teacher-forced gate needs an `mxint8` emulation in `oracle/` (an edit the loop may not make).
 
 ## Mistakes the loop has already caught or made (kept so they are not repeated)
 
@@ -66,3 +72,10 @@ safeloop.sh restore                              install the known-good engine a
 - A lab build leaves artifacts newer than any commit: lab builds go to the lab tree and target directory (`docs/AUTORESEARCH-HANDOFF.md` section 6).
 - A choice of collective derived from state that only rank 0 has (the oracle dump's capture) is a size mismatch inside one NCCL group. Every choice a rank makes
   between collectives must be a function of the message size and of flags every rank has.
+- `ops_dev.sh` once ran a stale test binary after a compile error (the build step's output was filtered, its exit status lost) and printed passing tests of the previous build: it now stops on a failed
+  build and fails on a failing or empty filter.
+- Editing a script a running job executes changes the job (bash reads a script as it runs): scripts are edited between runs, never during one.
+- A quantization format chosen on one metric can fail another: e4m3 elements failed one spec-oracle fixture at a near-tie, int8 elements passed all four (record `bench/records/2026-11-22-segment-b1/`). Decide
+  from the gates the project already has, and report what a single sample cannot show.
+- A bits-changing change moves the benchmark's own reply, and decode speed depends on the reply: one looping reply inflated the harness's decode mean by 10.6 tok/s. Read the per-prompt numbers and, with
+  `scripts/loop_probe.sh`, a population of prompts before quoting a gain.

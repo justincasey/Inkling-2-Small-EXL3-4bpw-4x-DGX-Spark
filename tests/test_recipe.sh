@@ -257,5 +257,8 @@ if res=$(python3 tests/test_gates.py 2>&1); then grep '^ok' <<<"$res"; else echo
 # ── harness: score zeroing, pin comparison ──
 if res=$(python3 tests/test_bench.py 2>&1); then grep '^ok' <<<"$res"; else echo "$res"; bad "tests/test_bench.py"; fi
 
+# ── the engine's MXINT8 quantizer against an independent implementation of the format ──
+if res=$(python3 tests/test_mxint8.py 2>&1); then grep '^ok' <<<"$res"; else echo "$res"; bad "tests/test_mxint8.py"; fi
+
 echo
 if (( fails == 0 )); then echo "test_recipe: all checks passed"; else echo "test_recipe: $fails check(s) failed"; exit 1; fi

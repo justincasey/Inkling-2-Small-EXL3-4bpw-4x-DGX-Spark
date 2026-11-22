@@ -1,0 +1,24 @@
+GPU tests of the Segment B1 engine (branch inkling2-b, commit c4a3a26), rank 0, through scripts/ops_dev.sh under scripts/safeloop.sh cmd, 2026-11-22 01:51-01:52
+(every filter reported "test result: ok"; the first four rows are the run of 01:51, the others of 01:43-01:47 of the same commit):
+== inkling2_ops mxint8_
+test mxint8_dequantize_kernel_is_exact_for_every_code_at_every_scale ... ok            (every byte value -128..127 at every stored scale 27..134)
+test mxint8_linear_equals_the_bf16_linear_on_the_dequantized_weights ... ok            (k 4608 / 1536 / 2304 / 768, m 1..130, four output modes, three bf16 kernels)
+== inkling2_ops dequant_cache
+test dequant_cache_serves_prefill_rows_and_refills_between_weights ... ok
+== inkling2_ops linear_rows_are_invariant
+test linear_rows_are_invariant_across_row_counts_and_kernels ... ok
+== inkling2_ops linear_columns
+test linear_columns_are_invariant_under_stacking ... ok
+== inkling2_ops unembed_softcap
+test unembed_softcap_masks_the_padding_and_the_sharded_topk_is_the_global_one ... ok
+== inkling2_ops golden_inkling2_ops_hashes
+test golden_inkling2_ops_hashes ... ok                                                  (the bf16 ops' committed golden hashes: unchanged)
+== inkling2_dspark the_mxint8_drafter
+test the_mxint8_drafter_is_the_bf16_drafter_on_the_dequantized_weights ... ok          (drafts and every traced intermediate, four ranks)
+== inkling2_dspark golden_inkling2_dspark_hashes
+test golden_inkling2_dspark_hashes ... ok
+== inkling2_dspark rows_are_invariant_and_ranks_agree
+test rows_are_invariant_and_ranks_agree ... ok
+test rows_are_invariant_and_ranks_agree_int8 ... ok
+Host tests (no GPU, the Mac): gb-cuda inkling2::mxint8 (5 tests, the golden hash included), gb-model inkling2 (31 tests), tests/test_mxint8.py (an independent
+implementation of the format reproduces the engine's quantization of the golden weights bit for bit).

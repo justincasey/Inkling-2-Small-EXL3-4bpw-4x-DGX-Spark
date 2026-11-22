@@ -1,0 +1,37 @@
+prose        first difference    24   distinct-4gram 0.990 -> 0.994            29.6 ->   34.7 tok/s
+code         first difference   165   distinct-4gram 0.851 -> 0.886            75.2 ->   83.5 tok/s
+structured   first difference    45   distinct-4gram 0.969 -> 0.267        -> LOOP     33.7 ->   74.7 tok/s
+json         first difference    86   distinct-4gram 0.525 -> 0.525            59.4 ->   66.7 tok/s
+extra00      first difference    36   distinct-4gram 0.961 -> 0.971            31.0 ->   40.6 tok/s
+extra01      first difference   154   distinct-4gram 0.782 -> 0.937            32.1 ->   34.4 tok/s
+extra02      first difference     0   distinct-4gram 0.837 -> 0.976            35.8 ->   44.0 tok/s
+extra03      first difference  none   distinct-4gram 0.452 -> 0.452   LOOP -> LOOP     88.9 ->  102.0 tok/s
+extra04      first difference  none   distinct-4gram 0.768 -> 0.768            79.4 ->   92.1 tok/s
+extra05      first difference    33   distinct-4gram 0.900 -> 0.823            47.9 ->   63.0 tok/s
+extra06      first difference    29   distinct-4gram 0.743 -> 0.914            42.7 ->   40.8 tok/s
+extra07      first difference    33   distinct-4gram 0.774 -> 0.790            39.1 ->   52.0 tok/s
+extra08      first difference    16   distinct-4gram 0.735 -> 0.703            56.5 ->   67.7 tok/s
+extra09      first difference    56   distinct-4gram 0.639 -> 0.703            65.7 ->   74.2 tok/s
+extra10      first difference  none   distinct-4gram 0.470 -> 0.470   LOOP -> LOOP     70.0 ->   81.0 tok/s
+extra11      first difference   456   distinct-4gram 0.884 -> 0.886            58.1 ->   71.8 tok/s
+extra12      first difference    53   distinct-4gram 0.790 -> 0.931            41.3 ->   41.7 tok/s
+extra13      first difference    97   distinct-4gram 0.572 -> 0.831            47.0 ->   40.7 tok/s
+extra14      first difference  none   distinct-4gram 0.059 -> 0.059   LOOP -> LOOP     84.7 ->  100.0 tok/s
+extra15      first difference    70   distinct-4gram 0.065 -> 0.191   LOOP -> LOOP     85.1 ->   83.3 tok/s
+extra16      first difference   433   distinct-4gram 0.809 -> 0.815            41.8 ->   48.1 tok/s
+extra17      first difference    78   distinct-4gram 0.821 -> 0.872            34.3 ->   41.7 tok/s
+extra18      first difference     8   distinct-4gram 0.978 -> 0.969            29.4 ->   37.5 tok/s
+extra19      first difference   161   distinct-4gram 0.587 -> 0.436        -> LOOP     60.0 ->   84.0 tok/s
+extra20      first difference    28   distinct-4gram 0.729 -> 0.151        -> LOOP     42.6 ->  108.7 tok/s
+extra21      first difference    22   distinct-4gram 0.589 -> 0.729            59.9 ->   59.4 tok/s
+extra22      first difference   370   distinct-4gram 0.639 -> 0.715            61.6 ->   77.1 tok/s
+extra23      first difference     0   distinct-4gram 0.560 -> 0.754            50.7 ->   52.7 tok/s
+extra24      first difference    51   distinct-4gram 0.827 -> 0.853            69.8 ->   73.0 tok/s
+extra25      first difference    22   distinct-4gram 0.943 -> 0.982            32.3 ->   39.5 tok/s
+extra26      first difference    17   distinct-4gram 0.737 -> 0.951            51.9 ->   42.5 tok/s
+extra27      first difference  none   distinct-4gram 0.916 -> 0.916            77.3 ->   88.9 tok/s
+extra28      first difference    16   distinct-4gram 0.230 -> 0.324   LOOP -> LOOP     58.4 ->   65.6 tok/s
+extra29      first difference     6   distinct-4gram 0.644 -> 0.735            50.5 ->   54.9 tok/s
+
+34 prompts: identical replies 5; median first difference 36; loops (distinct-4gram < 0.5): 5 -> 8; mean distinct-4gram 0.699 -> 0.714; mean tok/s 53.6 -> 63.6
+on the 26 prompts that loop in neither: mean tok/s 50.0 -> 56.3 (x1.125)

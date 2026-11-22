@@ -1,0 +1,16 @@
+control: 9292 rows
+  KL(ref||variant)   mean 0.000e+00   median 0.000e+00   p99 0.000e+00   max 0.000e+00
+  top-1 agreement    9292/9292 = 1.0000   (6879/6879 = 1.0000 of rows with margin >= 0.5)
+  disagreements by reference margin:  <0.05: 0  <0.1: 0  <0.25: 0  <0.5: 0  <1.0: 0  >=1.0: 0
+core: 9292 rows
+  KL(ref||variant)   mean 4.280e-04   median 4.901e-07   p99 9.543e-03   max 9.835e-02
+  top-1 agreement    9235/9292 = 0.9939   (6879/6879 = 1.0000 of rows with margin >= 0.5)
+  disagreements by reference margin:  <0.05: 50  <0.1: 53  <0.25: 55  <0.5: 57  <1.0: 57  >=1.0: 0
+unembed: 9292 rows
+  KL(ref||variant)   mean 1.637e-05   median 1.198e-08   p99 3.164e-04   max 4.695e-03
+  top-1 agreement    9283/9292 = 0.9990   (6879/6879 = 1.0000 of rows with margin >= 0.5)
+  disagreements by reference margin:  <0.05: 9  <0.1: 9  <0.25: 9  <0.5: 9  <1.0: 9  >=1.0: 0
+core_unembed: 9292 rows
+  KL(ref||variant)   mean 4.445e-04   median 5.073e-07   p99 9.623e-03   max 9.667e-02
+  top-1 agreement    9236/9292 = 0.9940   (6879/6879 = 1.0000 of rows with margin >= 0.5)
+  disagreements by reference margin:  <0.05: 49  <0.1: 53  <0.25: 54  <0.5: 56  <1.0: 56  >=1.0: 0

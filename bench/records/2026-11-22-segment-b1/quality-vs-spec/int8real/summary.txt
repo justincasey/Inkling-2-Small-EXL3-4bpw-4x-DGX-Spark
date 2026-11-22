@@ -1,0 +1,64 @@
+== chat-capital-effort0
+{"out": "/home/spark/q-work/eng/chat-capital-effort0.safetensors", "tokens": 41, "prompt_len": 25, "rows": 40, "chunks": [[2, 40]], "tensors": ["tokens", "logits", "hidden", "h_final", "router_idx", "router_w"]}
+   ],
+   "worst_layer": 31,
+   "worst_median_layer": 30,
+   "pass": true
+  },
+  "router": {
+   "identical_sets": 0.7510416666666667,
+   "slot_overlap_mean": 0.9634114583333333,
+   "flips_at_margin_max": 0.06014097481966019
+  }
+ },
+ "pass": true,
+ "gate_set": "none"
+}
+== chat-sky-effort0.9
+{"out": "/home/spark/q-work/eng/chat-sky-effort0.9.safetensors", "tokens": 50, "prompt_len": 26, "rows": 49, "chunks": [[4, 49]], "tensors": ["tokens", "logits", "hidden", "h_final", "router_idx", "router_w"]}
+   ],
+   "worst_layer": 41,
+   "worst_median_layer": 36,
+   "pass": true
+  },
+  "router": {
+   "identical_sets": 0.8703231292517006,
+   "slot_overlap_mean": 0.9834715136054422,
+   "flips_at_margin_max": 0.03364375978708267
+  }
+ },
+ "pass": true,
+ "gate_set": "none"
+}
+== raw-counting
+{"out": "/home/spark/q-work/eng/raw-counting.safetensors", "tokens": 51, "prompt_len": 35, "rows": 50, "chunks": [[6, 50]], "tensors": ["tokens", "logits", "hidden", "h_final", "router_idx", "router_w"]}
+   ],
+   "worst_layer": 24,
+   "worst_median_layer": 27,
+   "pass": true
+  },
+  "router": {
+   "identical_sets": 0.7183333333333334,
+   "slot_overlap_mean": 0.95890625,
+   "flips_at_margin_max": 0.06422873586416245
+  }
+ },
+ "pass": true,
+ "gate_set": "none"
+}
+== raw-long-window
+{"out": "/home/spark/q-work/eng/raw-long-window.safetensors", "tokens": 1127, "prompt_len": 1119, "rows": 1126, "chunks": [[8, 1126]], "tensors": ["tokens", "logits", "hidden", "h_final", "router_idx", "router_w"]}
+   ],
+   "worst_layer": 36,
+   "worst_median_layer": 27,
+   "pass": true
+  },
+  "router": {
+   "identical_sets": 0.5128774422735346,
+   "slot_overlap_mean": 0.8764339105979869,
+   "flips_at_margin_max": 0.15943725407123566
+  }
+ },
+ "pass": true,
+ "gate_set": "none"
+}
