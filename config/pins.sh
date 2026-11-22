@@ -9,7 +9,9 @@ MANIFEST_FILE=intake/manifest.tsv
 REXL3_UPSTREAM=https://github.com/REXL3/REXL3.git
 REXL3_UPSTREAM_BASE=06181b1d742912108361784257710806d9a75d18
 REXL3_FORK=https://github.com/justincasey/REXL3.git
-REXL3_COMMIT=f4e27caec70da060df2a923097fb750a0880a653   # `inkling2`: family, kernels, TP4, DSpark, prefix cache, vision
+# Segment B1 (2026-11-22): the dense core in MXINT8, branch `inkling2-b` (docs/exec-plans/active/autoresearch-segment-b.md). Segment A's pin, whose replies the old
+# references held, was f4e27caec70da060df2a923097fb750a0880a653 (recipe tag segment-a-v1, engine tag inkling2-segment-a-v1 at a73ff7a, same replies).
+REXL3_COMMIT=c4a3a2675dc82db76676dc2b962eb524fbe73e95   # `inkling2-b`: `inkling2` + Segment A + int8 dense core (REXL3_INKLING2_INT8=0 serves bf16)
 RUST_TOOLCHAIN=1.89.0
 
 # NCCL every rank dlopens (REXL3_NCCL_LIB): the 2.30.7 build REXL3's measured TP runs used, already at this path on all
