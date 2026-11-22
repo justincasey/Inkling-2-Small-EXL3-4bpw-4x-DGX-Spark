@@ -5,19 +5,19 @@
   "model": "inkling-2-small-exl3-4bpw-4x-dgx-spark",
   "label": "",
   "max_tokens": 64,
-  "date": "2026-11-22T08:32:20Z",
+  "date": "2026-11-18T21:50:22Z",
   "models": {
    "object": "list",
    "data": [
     {
      "id": "inkling-2-small-exl3-4bpw-4x-dgx-spark",
      "object": "model",
-     "created": 1795336340,
+     "created": 1795038622,
      "owned_by": "rexl3",
      "max_model_len": 1048576,
      "configured_max_model_len": 1048576,
      "kv_pool_tokens": 4194304,
-     "prefix_cache_reach_tokens": 1366016,
+     "prefix_cache_reach_tokens": 1024000,
      "pack_validated": "no (--allow-unvalidated-pack)",
      "pack_warning": "this pack is not one this release was validated on; it is served only because --allow-unvalidated-pack was given",
      "draft_validated": null,
@@ -212,12 +212,12 @@
      "reasoning_tokens": 62
     },
     "spec": {
-     "drafted": 114,
+     "drafted": 145,
      "accepted": 41,
      "rounds": 22
     }
    },
-   "seconds": 1.449,
+   "seconds": 2.152,
    "names_colour": true
   },
   {
@@ -290,12 +290,12 @@
      "reasoning_tokens": 41
     },
     "spec": {
-     "drafted": 80,
+     "drafted": 98,
      "accepted": 35,
      "rounds": 14
     }
    },
-   "seconds": 1.05,
+   "seconds": 1.508,
    "names_colour": true
   },
   {
@@ -330,59 +330,44 @@
     152013,
     155423,
     13,
-    170289,
-    150400,
+    166910,
     149911,
     4123,
-    13,
-    174520,
-    149923,
-    151469,
-    13,
-    150197,
-    149951,
-    150893,
-    25,
-    174398,
-    152373,
-    11,
-    150349,
-    155423,
     13,
     200010,
     200001,
     200004,
     31671,
-    25,
+    152013,
     152373,
-    26,
+    11,
     150349,
-    25,
+    152013,
     155423,
     13,
     200010,
     200006
    ],
    "finish_reason": "stop",
-   "content": "Left: green; right: yellow.",
-   "reasoning": "The user is asking about image halves. Need answer briefly. Need inspect image: left half green, right half yellow. Need final concise. Ensure no extra. We can answer: Left green, right yellow.",
+   "content": "Left half green, right half yellow.",
+   "reasoning": "The user is asking about image halves. Need answer briefly. Need inspect image: left half green, right half yellow. Provide concise.",
    "usage": {
     "prompt_tokens": 72,
-    "completion_tokens": 59,
-    "total_tokens": 131,
+    "completion_tokens": 44,
+    "total_tokens": 116,
     "prompt_tokens_details": {
      "cached_tokens": 0
     },
     "completion_tokens_details": {
-     "reasoning_tokens": 45
+     "reasoning_tokens": 30
     },
     "spec": {
-     "drafted": 88,
-     "accepted": 42,
-     "rounds": 16
+     "drafted": 84,
+     "accepted": 31,
+     "rounds": 12
     }
    },
-   "seconds": 1.272,
+   "seconds": 1.319,
    "names_colour": true
   }
  ],
@@ -397,65 +382,65 @@
     220,
     41302,
     338,
-    23064,
-    82,
+    149879,
     220,
-    44223,
+    37853,
+    157630,
     68014,
-    35891,
-    12,
-    34169,
-    155472,
-    163240,
-    68014,
-    45930,
-    193173,
-    149920,
-    149876,
-    196904,
-    23059,
-    68014,
-    1638,
-    177888,
-    150161,
-    149921,
-    167710,
-    13,
-    68019,
     371,
+    186077,
+    133997,
     220,
     118570,
-    23064,
-    82,
-    220,
-    40224,
     68014,
-    35725,
+    3142,
     82,
-    150053,
+    151333,
+    158117,
+    149920,
+    149876,
+    183616,
+    23059,
+    68014,
+    1350,
+    173092,
     149878,
-    156228,
+    155576,
+    150932,
+    13,
+    68014,
+    371,
+    220,
+    41302,
+    338,
     149879,
-    152373,
+    220,
+    37853,
+    157630,
+    68014,
+    371,
+    186077,
+    133997,
+    220,
+    118570,
+    68014,
+    3142,
+    82,
+    151333,
+    158117,
+    149920,
+    149876,
+    183616,
     11,
     68014,
     1350,
     173092,
     149878,
     155576,
-    168566,
+    150932,
     13,
-    68019,
-    1198,
-    190458,
-    31642,
-    175037,
     68014,
-    3632,
-    149921,
-    220,
-    32308,
-    82
+    1198
    ],
    "finish_reason": "length",
    "usage": {
@@ -469,9 +454,9 @@
      "reasoning_tokens": 0
     },
     "spec": {
-     "drafted": 128,
-     "accepted": 22,
-     "rounds": 41
+     "drafted": 168,
+     "accepted": 39,
+     "rounds": 24
     }
    }
   },
@@ -487,6 +472,7 @@
     78072,
     220,
     68189,
+    15,
     196904,
     156992,
     149881,
@@ -505,12 +491,14 @@
     8,
     13,
     149917,
-    175611,
-    357,
+    153419,
+    220,
+    35383,
     149919,
     78072,
     220,
     68189,
+    15,
     196904,
     156992,
     149881,
@@ -535,15 +523,12 @@
     78072,
     220,
     68189,
+    15,
     196904,
     156992,
     149881,
     149876,
-    150761,
-    267,
-    149881,
-    151488,
-    156689
+    150761
    ],
    "finish_reason": "length",
    "usage": {
@@ -551,15 +536,15 @@
     "completion_tokens": 64,
     "total_tokens": 585,
     "prompt_tokens_details": {
-     "cached_tokens": 457
+     "cached_tokens": 0
     },
     "completion_tokens_details": {
      "reasoning_tokens": 0
     },
     "spec": {
-     "drafted": 98,
-     "accepted": 44,
-     "rounds": 19
+     "drafted": 112,
+     "accepted": 46,
+     "rounds": 17
     }
    }
   },
@@ -630,8 +615,8 @@
     152179,
     13,
     149897,
-    220,
-    43371
+    193468,
+    357
    ],
    "finish_reason": "length",
    "usage": {
@@ -639,13 +624,13 @@
     "completion_tokens": 64,
     "total_tokens": 2094,
     "prompt_tokens_details": {
-     "cached_tokens": 1966
+     "cached_tokens": 0
     },
     "completion_tokens_details": {
      "reasoning_tokens": 0
     },
     "spec": {
-     "drafted": 65,
+     "drafted": 70,
      "accepted": 52,
      "rounds": 11
     }
@@ -663,6 +648,7 @@
     149991,
     149882,
     151457,
+    149876,
     155864,
     155550,
     149881,
@@ -673,53 +659,52 @@
     149991,
     151967,
     149876,
-    155864,
+    150562,
+    178409,
     25,
     68014,
-    48018,
-    590,
-    155550,
-    25,
-    198,
     12,
+    196980,
+    260,
     149876,
     152371,
     154741,
+    1,
     198,
     12,
+    196980,
+    263,
     149876,
     151346,
     153194,
+    1,
     198,
     12,
-    153200,
+    196980,
+    74974,
     149876,
     152373,
     2389,
+    1,
     198,
     12,
-    193784,
+    196980,
+    308,
+    1519,
     149876,
     152275,
+    1,
     198,
     12,
-    150156,
+    196980,
+    1088,
     149876,
     158842,
     170850,
+    1,
     198,
     12,
-    151420,
-    149876,
-    157385,
-    198,
-    12,
-    154600,
-    149876,
-    151594,
-    198,
-    12,
-    152836
+    196980
    ],
    "finish_reason": "length",
    "usage": {
@@ -727,15 +712,15 @@
     "completion_tokens": 64,
     "total_tokens": 8398,
     "prompt_tokens_details": {
-     "cached_tokens": 8270
+     "cached_tokens": 0
     },
     "completion_tokens_details": {
      "reasoning_tokens": 0
     },
     "spec": {
-     "drafted": 86,
-     "accepted": 48,
-     "rounds": 15
+     "drafted": 90,
+     "accepted": 50,
+     "rounds": 13
     }
    }
   }

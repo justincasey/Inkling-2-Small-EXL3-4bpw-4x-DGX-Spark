@@ -1,6 +1,6 @@
 # Execution plan: autoresearch, Segment B (bit-changing speed)
 
-Session: `autoresearch/session-20261118` after the Segment A tags (`segment-a-v1` here, `inkling2-segment-a-v1` on the engine at `a73ff7a`); metric `target_score` as before
+Session: `autoresearch/session-20261118` after the Segment A tags (`segment-a-v1` here, `inkling2-segment-a-v1` on the engine at `a73ff7a`); B1's pin is on `segment-b1-candidate`; metric `target_score` as before
 (`autoresearch.sh`), but **comparisons with Segment A are void**: B changes the replies, and the benchmark's decode speed depends on the reply (see the B1 record).
 User (2026-11-22): do all of Segment A first, tag it, then the two B items: (1) the dense core in 8-bit weights, (2) an FP8 MoE prefill. Every B change needs the oracle gate and a
 re-pin. Engine worktrees: `~/projects/rexl3-inkling2-b` (branch `inkling2-b`, the frozen one the screens and the harness build) and `~/projects/rexl3-inkling2-dev`
@@ -10,11 +10,14 @@ re-pin. Engine worktrees: `~/projects/rexl3-inkling2-b` (branch `inkling2-b`, th
 
 - [x] harness on `c4a3a26`, the pin run and a full run (`bench/records/2026-11-22-segment-b1/harness-runs/`): 10 of 11 gates both times, `pin` reproduced byte for byte on the second boot; **needle fails on the 128-token answer budget** (the code is found in the reasoning)
 - [x] format chosen by measurement: e4m3 (MXFP8) failed one spec-oracle drift fixture, int8 passes all four (record `bench/records/2026-11-22-segment-b1/`)
-- [x] new references pinned (`config/pins.sh`, `bench/reference*.json` by `PIN=1`; Segment A's are in the B1 record)
+- [x] new references written by `PIN=1` (the 1M reply included) with `config/pins.sh` on **branch `segment-b1-candidate`** (tag `segment-b1`); this branch keeps Segment A's pin and references (`f4e27ca`) until the user decides, so the stack it builds and serves is the validated one
 - [x] B1 engine `c4a3a26`: attention `w_q` / `w_o`, the unembed shard and the drafter's block projections as MXINT8; decode 2.0-2.4x faster per launch; replies equal the bf16 engine's on the dequantized weights bit for bit
 - [ ] **user decisions below**
 - [x] 1M-token prefill on `c4a3a26`: 827.3 / 827.1 tok/s, decode 31.49 after it, lowest free memory 10.43 / 10.34 GiB, capacity and memory PASS; the 1M reply is pinned (record `README.md`, "1M tokens")
 - [ ] B2: not started; the measured prerequisites and an estimate are below
+- [ ] before B1 could be promoted (all engineering, none started): (a) make `REXL3_INKLING2_INT8` part of the boot gate's facts (`I2Facts` in `crates/model/src/families/inkling2/tp.rs`, which already carries
+      `kv_dtype`, the collective and the drafter label), so a rank that quantized another set of groups is refused instead of serving different bits: a change to the engine, so a new commit and a
+      re-pin; (b) the NLL measure of the B1 record on a natural-language set (the one run is the benchmark's synthetic filler text); (c) merge `segment-b1-candidate` (the pin and references) into the session branch
 
 ## Decisions for the user
 

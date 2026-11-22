@@ -86,8 +86,9 @@ PHASES=prefill-1m ./autoresearch.sh      # the 1M-token prefill benchmark (about
 ```
 
 Scope: Segment A (bit-preserving, complete: tags `segment-a-v1` here and `inkling2-segment-a-v1` on the engine) and Segment B1 (bit-changing: the dense core as MXINT8,
-`bench/records/2026-11-22-segment-b1/`). The pins and references are B1's engine `c4a3a26` (`config/pins.sh`; Segment A's references are in the B1 record, the
-`segment-a-v1` tag holds the A pins). The `oracle` gate (`oracle/teacher_force.py` against the emulating oracle) is not wired in and was not run for B1: it needs an `mxint8`
+`bench/records/2026-11-22-segment-b1/`). **The pin and the references on this branch are Segment A's** (`config/pins.sh` `f4e27ca`, `bench/reference*.json`), so the stack this branch builds and
+serves is the validated one. B1's pin (`c4a3a26`) and its references (written by `PIN=1`, the 1M reply included) are on the branch **`segment-b1-candidate`** (tag `segment-b1`), to be merged only if
+the user promotes B1. The `oracle` gate (`oracle/teacher_force.py` against the emulating oracle) is not wired in and was not run for B1: it needs an `mxint8`
 emulation in `oracle/`, which the loop may not edit; the spec-oracle drift gate (`scripts/quality_vs_spec.sh`) was run instead.
 
 Segment B1 (engine `c4a3a26`): 10 of 11 gates, the needle gate fails on its 128-token answer budget (the code is found in the reasoning). The int8 kernels make decode **x1.16 at identical

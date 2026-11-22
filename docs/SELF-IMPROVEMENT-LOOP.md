@@ -63,7 +63,8 @@ safeloop.sh restore                              install the known-good engine a
 - It does not touch `config/pins.sh`, `bench/reference*.json`, `oracle/`, the gate thresholds or the memory guard's floors (off limits since the first session).
 - It cannot recover from a node that is down or from a lost network: `ensure_good` fails loudly (`RESTORE-FAILED` in the history, exit 1) and the cluster is left stopped.
 - It does not run the oracle gate: bit-changing work (Segment B) needs a new pin and the oracle flow of `docs/ORACLE-GAP.md`. Segment B1's re-pin (`config/pins.sh`, `bench/reference*.json`) was made by hand,
-  authorised by the user, never by the loop, and nothing of B was promoted; the teacher-forced gate needs an `mxint8` emulation in `oracle/` (an edit the loop may not make).
+  authorised by the user, never by the loop, and lives on the recipe branch `segment-b1-candidate` (the session branch keeps Segment A's pin); nothing of B was promoted; the teacher-forced gate needs an
+  `mxint8` emulation in `oracle/` (an edit the loop may not make).
 
 ## Mistakes the loop has already caught or made (kept so they are not repeated)
 

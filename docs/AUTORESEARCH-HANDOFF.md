@@ -21,10 +21,11 @@ Hold these while optimizing; each is a gate.
 
 ## 2. Where things stand
 
-- **Engine:** the pin is **`c4a3a26`** (Segment B1, branch `inkling2-b`: Segment A plus the int8 dense core; `config/pins.sh`; `REXL3_INKLING2_INT8=0` serves bf16). Segment A's pin was `f4e27ca`
-  (branch `inkling2`; pushed to `justincasey/REXL3`, REXL3/REXL3 issue 189) and **Segment A ended at `a73ff7a`**, branch `inkling2-a` (`~/projects/rexl3-inkling2-a`, the validated line; `-dev` and `-screen`
-  worktrees beside it), tagged `inkling2-segment-a-v1`; the older lab line is `inkling2-ar` (it holds the mesh's lab commits). Segment B worktrees: `~/projects/rexl3-inkling2-b` (frozen, what the
-  harness builds) and `-dev` (`inkling2-b-dev`). B is not pushed and not promoted: `docs/exec-plans/active/autoresearch-segment-b.md` lists the decisions waiting for the user.
+- **Engine:** the pin is `f4e27ca` (branch `inkling2`, `config/pins.sh`; pushed to `justincasey/REXL3`, REXL3/REXL3 issue 189); **Segment A ended at `a73ff7a`**, branch `inkling2-a`
+  (`~/projects/rexl3-inkling2-a`, the validated line, same replies as the pin; `-dev` and `-screen` worktrees beside it), tagged `inkling2-segment-a-v1`; the older lab line is `inkling2-ar` (it holds the
+  mesh's lab commits). **Segment B1** (the int8 dense core, engine `c4a3a26`, branch `inkling2-b`, worktrees `~/projects/rexl3-inkling2-b` frozen and `-dev` on `inkling2-b-dev`; `REXL3_INKLING2_INT8=0`
+  serves bf16) is a candidate: its pin and references are on the recipe branch `segment-b1-candidate`, nothing of B is pushed or promoted, and
+  `docs/exec-plans/active/autoresearch-segment-b.md` lists the decisions waiting for the user.
   - Family code: `crates/model/src/families/inkling2/`.
   - Kernels: `crates/cuda/src/inkling2/`, `crates/cuda/src/inkling2_attn*.rs`, `crates/cuda/csrc/inkling2_*.cu`.
   - Lane branches `inkling2-{attn,moe,vision,draft,fwd,gap,feat}` are merged into `inkling2`.

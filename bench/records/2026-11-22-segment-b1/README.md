@@ -1,6 +1,6 @@
 # Segment B1: the dense core in MXINT8 (2026-11-22)
 
-Engine `c4a3a26` (branch `inkling2-b` of the engine worktree `~/projects/rexl3-inkling2-b`, from Segment A's `a73ff7a`), pinned in `config/pins.sh` and run through the full harness twice (the pin run, then the full run: the second boot reproduces the pinned replies byte for byte). **This changes bits.**
+Engine `c4a3a26` (branch `inkling2-b` of the engine worktree `~/projects/rexl3-inkling2-b`, from Segment A's `a73ff7a`), pinned in `config/pins.sh` of the recipe branch `segment-b1-candidate` (tag `segment-b1`; the session branch keeps Segment A's pin) and run through the full harness twice (the pin run, then the full run: the second boot reproduces the pinned replies byte for byte). **This changes bits.**
 The attention projections (the fused `w_q` matrix and `w_o` of every layer), the rank's unembed shard and the drafter's block projections are served as int8 codes
 with one power-of-two scale (E8M0) per 32 weights of a row (the OCP MXINT8 layout), made on the host at load from the pack's bf16: half the bytes a decode round reads
 from DRAM for 3.7 of its 13.7 GB. Every kernel dequantizes to the exact bf16 value and runs the same bf16 mma chains as before, so an output is the bf16 engine's output on
