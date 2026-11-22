@@ -42,6 +42,23 @@ for r in 0 1 2 3; do
   h=${H[$r]}
   scp -q -o BatchMode=yes spark@$h:/home/spark/plp-fid-ref/rank$r/chunk00000.json "$OUT/ref-rank$r.json"
 done
+# the label of a row is the prompt's next token (the last row has none): from the reference's chunk descriptions (rank 0 holds them all), one file a chunk on every node
+mkdir -p "$OUT/ref-chunks" "$OUT/labels"
+scp -q -o BatchMode=yes "spark@${H[0]}:/home/spark/plp-fid-ref/rank0/chunk*.json" "$OUT/ref-chunks/"
+python3 - "$OUT" <<'PY' || { echo "FAIL: building the labels"; exit 1; }
+import glob, json, os, struct, sys
+out = sys.argv[1]
+files = sorted(glob.glob(os.path.join(out, "ref-chunks", "chunk*.json")))
+chunks = [json.load(open(f)) for f in files]
+toks = [t for c in chunks for t in c["tokens"]]
+assert len(toks) == sum(c["rows"] for c in chunks), "the chunks' token lists are not their rows"
+at = 0
+for f, c in zip(files, chunks):
+    lab = [toks[at + i + 1] if at + i + 1 < len(toks) else -1 for i in range(c["rows"])]
+    open(os.path.join(out, "labels", os.path.basename(f)[:-5] + ".i32"), "wb").write(struct.pack(f"<{len(lab)}i", *lab))
+    at += c["rows"]
+PY
+for h in "${H[@]}"; do $SSH spark@$h 'rm -rf /home/spark/fid-labels; mkdir -p /home/spark/fid-labels' && scp -q -o BatchMode=yes "$OUT"/labels/*.i32 spark@$h:/home/spark/fid-labels/ || { echo "FAIL: labels to $h"; exit 1; }; done
 for label in "${names[@]}"; do
   mkdir -p "$OUT/$label"
   for r in 0 1 2 3; do
@@ -53,7 +70,8 @@ r=$1; v=$2; cd /home/spark; mkdir -p fid-stats
 for f in plp-fid-ref/rank$r/chunk*.logits.f32; do
   c=${f##*/}; c=${c%.logits.f32}
   n=$(python3 -c "import json,os,sys; print(os.path.getsize(sys.argv[2]) // 4 // json.load(open(sys.argv[1]))['rows'])" plp-fid-ref/rank$r/$c.json "$f")
-  ./logit_stats "$f" plp-fid-$v/rank$r/$c.logits.f32 "$n" fid-stats/$v-rank$r-$c.stats >/dev/null || exit 1
+  base=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['vocab_base'])" plp-fid-ref/rank$r/$c.json)
+  ./logit_stats "$f" plp-fid-$v/rank$r/$c.logits.f32 "$n" fid-stats/$v-rank$r-$c.stats fid-labels/$c.i32 "$base" >/dev/null || exit 1
 done
 REMOTE
     ) &
@@ -65,6 +83,6 @@ REMOTE
     for f in "$OUT/$label"/$label-rank$r-chunk*.stats; do mv "$f" "$OUT/$label/${f##*/$label-}"; done
   done
 done
-on_all 'rm -rf /home/spark/plp-fid-* /home/spark/fid-stats /home/spark/logit_stats /home/spark/logit_stats.c'
+on_all 'rm -rf /home/spark/plp-fid-* /home/spark/fid-stats /home/spark/fid-labels /home/spark/logit_stats /home/spark/logit_stats.c'
 python3 scripts/logit_fidelity.py "$OUT" "${names[@]}" | tee "$OUT/fidelity.txt"
 echo "results: $OUT"

@@ -19,8 +19,8 @@ RANKS = 4
 
 def rows_of(path):
     b = open(path, "rb").read()
-    n = len(b) // 80
-    return [struct.unpack_from("<10d", b, 80 * i) for i in range(n)]
+    n = len(b) // 96
+    return [struct.unpack_from("<12d", b, 96 * i) for i in range(n)]
 
 
 def lse(parts):  # [(m, z)] -> log sum z e^m
@@ -38,6 +38,7 @@ def variant(d, name, base):
     n = len(per_rank[0])
     assert n and all(len(x) == n for x in per_rank), f"{name}: rows per rank {[len(x) for x in per_rank]}"
     kl, agree, margins, bad = [], 0, [], []
+    nll_a, nll_b, dn = [], [], []
     for i in range(n):
         s = [per_rank[r][i] for r in range(RANKS)]
         la = lse([(x[0], x[1]) for x in s])
@@ -55,6 +56,11 @@ def variant(d, name, base):
             agree += 1
         else:
             bad.append(margin)
+        labs = [(x[10], x[11]) for x in s if x[10] == x[10]]  # the label's logits, from the one shard that holds it (NaN elsewhere); none on the last row
+        if labs:
+            nll_a.append(la - labs[0][0])
+            nll_b.append(lb - labs[0][1])
+            dn.append(nll_b[-1] - nll_a[-1])
     kls = sorted(kl)
     pick = lambda q: kls[min(n - 1, int(q * n))]
     wide = [m for m in margins if m >= 0.5]
@@ -63,6 +69,12 @@ def variant(d, name, base):
     print(f"  KL(ref||variant)   mean {sum(kl)/n:.3e}   median {pick(0.5):.3e}   p99 {pick(0.99):.3e}   max {kls[-1]:.3e}")
     print(f"  top-1 agreement    {agree}/{n} = {agree/n:.4f}   ({len(wide) - len(wide_bad)}/{len(wide)} = {(len(wide)-len(wide_bad))/max(len(wide),1):.4f} of rows with margin >= 0.5)")
     print("  disagreements by reference margin:  " + "  ".join(f"<{t}: {sum(1 for m in bad if m < t)}" for t in (0.05, 0.1, 0.25, 0.5, 1.0)) + f"  >=1.0: {sum(1 for m in bad if m >= 1.0)}")
+    if dn:
+        m = sum(dn) / len(dn)
+        sd = math.sqrt(sum((x - m) ** 2 for x in dn) / (len(dn) - 1)) if len(dn) > 1 else float("nan")
+        se = sd / math.sqrt(len(dn))
+        print(f"  NLL of the prompt's own next token ({len(dn)} rows): reference {sum(nll_a)/len(nll_a):.4f}   variant {sum(nll_b)/len(nll_b):.4f}   "
+              f"variant - reference {m:+.5f} +- {se:.5f} (1 s.e.; t = {m / se if se else float('nan'):+.2f})")
 
 
 def main():
