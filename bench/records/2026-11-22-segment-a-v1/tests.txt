@@ -1,0 +1,16 @@
+Primitive-level proofs of the claims "same bits", 2026-11-21, engine tree 58c91f2 (lab build on rank 0, scripts/ops_dev.sh and scripts/quad_dev.sh under scripts/safeloop.sh)
+
+Single node (rank 0, crates/cuda/tests/inkling2_ops.rs):
+  test linear_columns_are_invariant_under_stacking ... ok       (fused [q-side | 4 zero rows | k | v] == three launches; 7 row counts x 5 kernel choices)
+  test conv_commit_layers_equals_per_conv_commits ... ok         (one launch over 6 convs == six launches; slots with 8, 3, 1, 0 rows accepted)
+  test linear_rows_are_invariant_across_row_counts_and_kernels ... ok
+
+Four ranks (crates/cuda/tests/nccl_oneshot_quad.rs, every rank printed the same lines):
+  (exactness) 48 cases: bf16 one-shot == f32 one-shot, bit for bit
+  (exactness) 20 cases: bf16 reduce-scatter + f32 all-gather == f32 one-shot, bit for bit        (5 sizes x 2 offsets x 2 seeds, specials included)
+  (exactness) 20 cases: bf16 all-gather == rne(f32 one-shot sum), bit for bit                    (host round-to-nearest-even reference; every sum exercises the rounding)
+  (mesh exactness) 132 cases: the mesh sum == NCCL's one-shot, bit for bit
+  test result: ok. 1 passed (nccl_oneshot_quad_latency), all four ranks
+
+The bf16 all-gather is exact only for consumers that round the f32 sum to bf16 when they read it. Every consumer of the target's layer sums is a conv that does
+(__float2bfloat16_rn in load_x, ConvIn::F32); the drafter's add+norm reads the f32 sum, so the drafter keeps the f32 gather (GroupComm::sum_part_rounded).

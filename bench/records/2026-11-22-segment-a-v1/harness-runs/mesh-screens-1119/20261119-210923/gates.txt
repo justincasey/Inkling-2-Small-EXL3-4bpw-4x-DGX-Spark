@@ -1,0 +1,6 @@
+PASS host
+PASS goldens
+PASS capacity
+PASS smoke
+PASS vision
+PASS spec

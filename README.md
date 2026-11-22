@@ -85,18 +85,20 @@ PHASES=warm,prefill-32k ./autoresearch.sh  # a screen: raw numbers, target_score
 PHASES=prefill-1m ./autoresearch.sh      # the 1M-token prefill benchmark (about 25 minutes), a screen
 ```
 
-Scope: bit-preserving work only. The `oracle` gate (bit-changing kernel work) is not wired in; see the script's header.
+Scope: bit-preserving work only (Segment A, complete). The `oracle` gate (bit-changing kernel work, Segment B) is not wired in; see the script's header.
 
-Segment A result (record `bench/records/2026-11-19-segment-a-final/`, engine `457d637` against the pinned `f4e27ca`, all 11 gates): `target_score` 0.4422 to
-0.6143, decode (mean of four prompt types, one request) 42.2 to 50.2 tok/s (49.5-50.7 over six boots of the final engine), cold prefill at
-32K / 128K / 256K 1,298 / 1,199 / 1,080 to 2,082 / 1,810 / 1,534 tok/s, cold 1M prefill 689 to 818 tok/s (4 x 1,048,576-token lanes, memory gate passed). Every row's logits of a
-9,292-token prompt are byte-identical to the pinned engine's on all four ranks (`bitwise-logits.txt`). The 70 tok/s and 4,000 tok/s targets are not met.
+Segment A result (record `bench/records/2026-11-22-segment-a-v1/`, engine `a73ff7a` against the pinned `f4e27ca`, all 11 gates): `target_score` 0.4422 to
+0.6464, decode (mean of four prompt types, one request) 42.2 to 54.1 tok/s, cold prefill at 32K / 128K / 256K 1,298 / 1,199 / 1,080 to 2,161 / 1,868 / 1,575 tok/s,
+cold 1M prefill 689 to 830 tok/s (4 x 1,048,576-token lanes, memory gate passed). Every row's logits of a 9,292-token prompt are byte-identical to the
+pinned engine's on all four ranks (`bitwise-logits.txt`, 48 of 48). The 70 tok/s and 4,000 tok/s targets are not met: decode is within about 6% of the
+bandwidth bound of the BF16 core (`docs/exec-plans/completed/autoresearch-segment-a.md`, "Seventh pass"), prefill needs faster MoE and linear kernels.
+The experiments ran under `scripts/safeloop.sh`, which restores the last known-good engine whatever happens (`docs/SELF-IMPROVEMENT-LOOP.md`).
 
 ## Known gaps (next phase)
 
 - Decode runs eagerly (CUDA graphs would save at most about 2%: the idle time is 2.6 us launch gaps). Segment A (bit-preserving) work
-  is recorded in `bench/records/2026-11-19-segment-a-final/` and `docs/exec-plans/active/autoresearch-segment-a.md`, with the open items.
-  Targets and ceilings: `docs/ROOFLINE.md`.
+  is recorded in `bench/records/2026-11-22-segment-a-v1/` and `docs/exec-plans/completed/autoresearch-segment-a.md`, with what was left undone.
+  Targets and ceilings: `docs/ROOFLINE.md`. The next phase (Segment B: the BF16 dense core in MXFP8, an FP8 MoE prefill) changes bits and needs a new pin.
 - `prompt_logprobs` is not served.
 - The pack's fingerprint is not in REXL3's validated list (`--allow-unvalidated-pack`).
 - REXL3 refuses `json_schema` / `json_object` response formats.

@@ -21,16 +21,18 @@ Hold these while optimizing; each is a gate.
 
 ## 2. Where things stand
 
-- **Engine:** `~/projects/REXL3`, branch `inkling2` @ `f4e27ca` (pinned in `config/pins.sh`, nothing pushed).
+- **Engine:** the pin is `f4e27ca` (branch `inkling2`, `config/pins.sh`; pushed to `justincasey/REXL3`, REXL3/REXL3 issue 189). **Segment A ended at `a73ff7a`**, branch `inkling2-a`
+  (`~/projects/rexl3-inkling2-a`, the validated line; `-dev` and `-screen` worktrees beside it), tagged `inkling2-segment-a-v1`; the older lab line is `inkling2-ar` (it holds the mesh's lab commits).
   - Family code: `crates/model/src/families/inkling2/`.
   - Kernels: `crates/cuda/src/inkling2/`, `crates/cuda/src/inkling2_attn*.rs`, `crates/cuda/csrc/inkling2_*.cu`.
   - Lane branches `inkling2-{attn,moe,vision,draft,fwd,gap,feat}` are merged into `inkling2`.
-- **Recipe:** this repo @ `2b39202`.
+- **Recipe:** this repo, branch `autoresearch/session-20261118`, tagged `segment-a-v1`. Record of the final state: `bench/records/2026-11-22-segment-a-v1/`.
+  - The self-improvement loop (known-good restore, screens, tests): `docs/SELF-IMPROVEMENT-LOOP.md`, `scripts/safeloop.sh`.
   - Controller: `./inkling2.sh` (doctor, build REV, start, stop, smoke, memwatch, record, stop-other/restore-other).
   - Gate tools: `bench/tools/{gates,exactness,needle,smoke,greedy}.py`.
   - Oracle: `oracle/`.
 - **Cluster:**
-  - Inkling stopped.
+  - Inkling serving `a73ff7a` on :8000 (the known-good engine; `scripts/safeloop.sh restore` brings it back after any lab work).
   - DeepSeek-V4.1 4x stopped (user gave this lane the GPUs). `./inkling2.sh restore-other` brings it back.
   - Sessions: run `./inkling2.sh stop-other` at the start and `restore-other` at the end, unless told otherwise.
 - **Memory headroom is the binding resource.** At the target configuration MemAvailable is 9.9 GiB on rank 0 and

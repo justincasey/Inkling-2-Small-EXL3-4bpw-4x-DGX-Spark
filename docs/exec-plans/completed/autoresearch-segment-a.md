@@ -1,7 +1,8 @@
 # Execution plan: autoresearch, Segment A (bit-preserving speed)
 
 Session: `autoresearch/session-20261118`, metric `target_score` (see `autoresearch.sh`, `docs/AUTORESEARCH-HANDOFF.md` §3a).
-Engine candidates: worktree `~/projects/rexl3-inkling2-ar` (branch `inkling2-ar` off `inkling2` @ `f4e27ca`).
+Engine candidates: worktree `~/projects/rexl3-inkling2-ar` (branch `inkling2-ar` off `inkling2` @ `f4e27ca`) through run #17; from the seventh pass the validated line is branch
+`inkling2-a` (`~/projects/rexl3-inkling2-a`) with a dev and a frozen screening worktree (`docs/SELF-IMPROVEMENT-LOOP.md`). **Segment A is complete; this plan is closed (2026-11-22).**
 
 ## Status
 
@@ -18,7 +19,10 @@ Engine candidates: worktree `~/projects/rexl3-inkling2-ar` (branch `inkling2-ar`
 - [x] fourth and fifth passes (runs #14 to #16): drafter Markov walk kernels, the batched narrow linear, the grid sizing's confirmation; measured and dropped: the 128 x 128 wide linear,
       deeper MoE gemv prefetch, load cache hints (section "Fourth to sixth passes")
 - [x] final checks on builds proved clean: byte-for-byte logits 48/48, 1M prefill 818 tok/s with pin and memory PASS, a confirmation full run (#16) reproducing #15
-- [ ] open items: "What is left" below (none started)
+- [x] seventh pass (runs #18 to #20): the RoCE mesh promoted through the full harness, K and V in the `w_q` launch, bf16 reduce-scatter and all-gather of the prefill sums, batched
+      conv commits, the drafter chain on PDL; byte-for-byte logits 48/48 and the oracle-dump smoke test on the final commit; 1M prefill 830 tok/s (record `bench/records/2026-11-22-segment-a-v1/`)
+- [x] the experiments ran under `scripts/safeloop.sh` (known-good engine restored after every run, promotion only on a full 11/11 run); the loop is documented
+- [x] Segment A closed at `a73ff7a`, `target_score` 0.6464; what was not done is under "What is left"
 
 ## Baseline (unmodified `f4e27ca`, eager, clocks locked at 2200 MHz)
 
@@ -230,33 +234,57 @@ of the `gb-*` artifacts a rebuild served normally, and `cmd_build` now touches t
 gb-* crates (the logits script prints it): 48/48 identical, 1M pin and memory PASS, and run #16 reproduced run #15. Runs #13 to #15 were built when each build took about 100 s (a full rebuild) and #16 matches #15,
 which is the evidence that they were genuine. Lab builds belong in their own tree and target directory.
 
-## What is left (2026-11-20, after the sixth pass)
+## Seventh pass (2026-11-21)
 
-Nothing below is started. Each needs a screen first (`PHASES=warm,decode`, `warm,prefill-32k`; decode screens spread by boot, so take several) and a
-full run only to keep it.
+Start: run #17 (`bd307f5`, 0.6158) and, built in the previous session but never through the full harness, the mesh (`1721743`). Records: `bench/records/2026-11-22-segment-a-v1/`.
 
-1. Decode: understand the boot-to-boot spread of the L2 warm (46.3-47.7 over eleven boots of one build against a tight 45.97-46.20 without it). Ruled out: CPU
-   placement (the node has 10 Cortex-X925 cores at 3.9 GHz and 10 Cortex-A725 at 2.8 GHz; in one boot decode_c1 was 46.39 unpinned, 46.46 pinned to the A725 cores,
-   46.15 pinned to the X925 cores and 46.32 unpinned again, and in a high-mode boot 47.85 / 47.74 unpinned with every busy thread on an X925 core and 47.28 / 47.50 pinned
-   to them: repeats inside a boot agree, pinning changes nothing) and simple allocation randomness (the isolated L2 bench in eight fresh processes: 281-287 us without the warm,
-   214-224 us with 16 MB). Left as guesses: the NCCL path or channel assignment of a boot, or the physical placement of the weights against the L2 sets inside the engine. If a cause
-   is found, fixing it puts every boot at the good mode (+1.5% over the mean).
-2. Decode: PDL for the rest of the drafter chain (`add_norm`, `ctx_kv`, `block_prep`, `attn_part` / `attn_merge`, `silu_mul`, the wide linears) and the shared
-   glue (`rmsnorm`): about 150 launches a round (`markov_*` are done); about 0.5% at 2.6 us a launch, below what a four-boot screen can show.
-2b. Decode: split `markov_step` over eight blocks per request with a ping-pong state buffer (about 0.3 ms a round), and a per-shape `KU` for the narrow linear (w_o preferred 14, w_q 10-12).
-3. Decode: warm more of the weights during the all-reduces (the next layer's `w_k` and `w_v`, 2.4 MB each; at 24 MB of `w_q` the L2 lost, so the budget is
-   about 16-20 MB a window), and the experts are unknown until the router has run.
-4. Decode: walk truncation (`BudgetPolicy::Plan` already asks the drafter for `ProposeRequest.max` drafts; the Inkling backend runs all 7 steps and the round cost
-   has no draft-step cost) with the Curve estimator constants (decay 0.97, prior weight 2; +0.5-0.6% in a sweep, noise level). About +0.8% of decode `[ESTIMATE]`.
-5. Prefill: the wide `w_o` linear (75 MB of fp32 output against 1,536 of K; flat under the staged kernel), the attention tail (256 blocks over 48 SMs; heavy-first order
-   did nothing), and the memory-bound elementwise kernels on rank 3 (each near its DRAM floor; only fusing passes would move them).
-6. Decode: a 4-rank collective transport. First isolate the no-compute one-shot latency at 147 KB over this fabric (`crates/cuda/tests/nccl_oneshot_pair.rs`
-   `latency` phase does this for two nodes): the saving is bounded by what the NCCL one-shot costs above that floor, and the time other ranks spend waiting is not
-   recoverable by any transport.
+**The mesh (run #18, `1721743`, 0.6212).** A 4-rank all-gather over RoCE writes (one kernel stages the operand, a proxy thread posts the writes, the same kernel waits for the peers' flags and
+writes the rank-order f32 sum in place) for every decode collective, bf16 on the wire for the layer partials. Decode 50.60 to 53.33 (+5.4%), prefill 32K / 128K / 256K 3.4 / 4.7 / 3.6% lower
+(2,026 / 1,742 / 1,487), the drafter's acceptance unchanged. The prefill cost showed in every screen of the earlier session with the mesh on (9 screens, 2,008-2,046 at 32K, against a mesh-off
+median of 2,081 and a mode at 2,130; `harness-runs/mesh-screens-1119/index.txt`); the lab switches of that session attributed it to having connected queue pairs (even with the mesh unused), and
+parking the pairs (INIT) during prefill did not remove it. The lab commits are not in the validated line. Cause not found; net +0.9% of score.
 
-Before any final claim run the 1M benchmark (`PHASES=prefill-1m`) and the byte-for-byte logits check
-(`bench/records/2026-11-19-segment-a-final/bitwise-logits.txt`: `DUMP_DIR=... EXTRA_ENV=REXL3_INKLING2_DUMP_LOGITS_ONLY=1`, `cmp` against a boot
-of `f4e27ca`). Lab branches of the engine worktree that hold measured-and-dropped code: `lab/fused-groups`, `lab/joint-moe`.
+**K and V in the `w_q` launch.** A local layer's `w_k` and `w_v` follow its q-side rows in one matrix (`[3,792, 4,608]`: the 3,276 q-side rows, 4 zero rows that keep K on a 16-byte boundary, 256 K, 256 V; the
+step buffer's row stride is 3,792 for every layer), one launch instead of three on 40 of 48 layers; the 8 global layers keep three (their k and v inputs are separate mixes). Every output column
+is the same dot product in the same order whatever the other columns are (`linear_columns_are_invariant_under_stacking`: 7 row counts x 5 kernel choices). `REXL3_INKLING2_FUSE_KV=0`
+restores the old layout. **Batched commits.** The per-round conv-state commits were three launches a layer (KV, attention output, MoE output), 144 a round, between the host's decision and the next
+step; pointer tables of every layer's (window record, state) make them two launches (the same kernels with a layer index; `conv_commit_layers_equals_per_conv_commits`;
+`REXL3_INKLING2_COMMIT_LAYERS=0`). Together +1.4% of decode (54.04 / 54.03 against 53.19 / 53.41, interleaved boots, every one `PASS pin`).
+
+**bf16 reduce-scatter and all-gather of the prefill layer sums.** A rank's layer partial is exactly a bf16 held as f32, so the reduce-scatter sends the packed bf16 halves and sums them with the same
+rank-order f32 add (`rsag_sum_bf16_valued`; the pack and `gb_tp_sum_slots_bf16` kernels of the decode one-shot): same bits, half the reduce-scatter bytes (`REXL3_INKLING2_RS_BF16=0`). The sum itself is
+not a bf16, but every consumer of the target's sums is a conv that rounds its f32 input to bf16 when it reads it (`__float2bfloat16_rn` in `load_x`), and rounding a bf16-valued f32 is the identity: each
+rank rounds its share to nearest-even bf16, the bf16 shares travel and are expanded in place (`rsag_sum_bf16_valued_rounded`, `GroupComm::sum_part_rounded`, `REXL3_INKLING2_AG_BF16=0`), and every
+downstream bit is unchanged. The drafter's sums are read as f32 by its add+norm and keep the f32 gather. Prefill 32K, interleaved boots: all off 2,029 / 2,002, reduce-scatter only 2,067 / 2,090, both
+2,164 / 2,168 (+7.5%), more than half the bytes alone suggest: NCCL's send/recv kernels hold SMs while they run `[INFERENCE]`. Proofs: `nccl_oneshot_quad` (20 cases each, specials included, against the
+f32 one-shot and against a host round-to-nearest-even), the logits check below. A review caught that the exact-f32 predicate for oracle dumps came from rank 0's capture (`dump_ops`, rank 0 only): with
+`REXL3_INKLING2_DUMP_OPS=1` rank 0 would have gathered f32 and ranks 1-3 bf16, a size mismatch inside one NCCL group (`a73ff7a` takes it from the dump flags every rank has; `scripts/ops_dump_smoke.sh`).
+
+**Drafter chain on PDL.** Nine more kernels (feature mix, block input, add+norm, block prep, ctx K/V, attention partials and merge, SiLU*up, Markov concat) wait for their predecessor first and trigger
+at once. Worth nothing measurable (the off arm of the screens, 53.30, equals run #18's 53.33); kept because it is free of risk.
+
+**Result.** Run #19 (`58c91f2`) 0.6442, run #20 (`a73ff7a`, the final commit) **0.6464**: decode_c1 54.14, prefill 32K / 128K / 256K 2,161 / 1,868 / 1,575, 1M 830 (run on `58c91f2`), all 11 gates; logits of the 9,292-token
+prompt byte-identical to `f4e27ca` on all four ranks (48 of 48, lanes off and on). Decode round: 3.04 tokens / 54.1 tok/s = 56.2 ms against a floor of about 53 ms (13.7 GB a round at 258 GB/s): within about 6%.
+
+**Not done** (each under 1% by estimate, not worth a cycle): the expert remap folded into the grouping kernel, `markov_step` over eight blocks, walk truncation and the Curve constants, per-shape `KU`, the
+layer partials packed to bf16 by their producers (it would drop the pack pass of every prefill collective).
+
+## What is left (2026-11-22, Segment A closed)
+
+Bit-preserving work has about 6% of decode and an unknown amount of prefill left; every item below is small except the first two.
+
+1. The mesh's prefill cost (3-5%). If the cause is found and removed, +1.5-2.5% of score. The queue pairs' existence, not their use, is what the lab switches pointed at; parking them did not help.
+2. The mesh's latency: one collective is about 34 us (four ranks, 8 rows, bf16) against about 20 us of wire and kernel time; the rest is the proxy thread's hop (the kernel's descriptor, the host post). GPU-initiated
+   doorbells would remove it: up to 114 x 14 us = 1.6 ms of a 56 ms round (2.8%) `[ESTIMATE]`. New transport code; the 2-rank `roce_dev.cuh` shows the protocol.
+3. Decode: the boot-to-boot spread of the L2 warm (46.3-47.7 over eleven boots of one build, on a 53 tok/s engine now about 1%): CPU placement and allocation randomness were ruled out; NCCL's path or the weights'
+   placement against the L2 sets are guesses. Warm more weights during the all-reduces (the next layer's `w_k`/`w_v`, 16-20 MB budget).
+4. The small items under "Not done" above, and the drafter's `markov_step` split (ping-pong state buffer).
+5. Prefill: the wide `w_o` linear (75 MB of fp32 output), the attention tail, rank 3's elementwise kernels (only fusing passes would move them).
+6. **Beyond Segment A (changes bits; needs the oracle gate, a new pin and a new segment):** the BF16 core (attention 2.4 GB, unembed 0.46, drafter 0.8 of the 13.7 GB a round) in MXFP8 (about 1.7 GB less a round: decode
+   +12% `[ESTIMATE]`), and an FP8 MoE prefill (the MoE is about 4.8 s of a 15 s 32K prefill, latency-bound at 46% of the tensor pipe: how much FP8 mma buys is not known).
+
+Before any final claim: `PHASES=prefill-1m ./autoresearch.sh` and `scripts/logits_check.sh`, both under `scripts/safeloop.sh cmd`. Lab branches of the engine worktree `-ar` that hold measured-and-dropped code:
+`lab/fused-groups`, `lab/joint-moe`; the mesh's lab commits (`21f3f55` to `2b2c33f`) are on `inkling2-ar` only.
 
 ## Results (segment 2; engine commits on branch `inkling2-ar` of `~/projects/rexl3-inkling2-ar`)
 
@@ -277,6 +305,10 @@ of `f4e27ca`). Lab branches of the engine worktree that hold measured-and-droppe
 | #14 | `a9d01bc` | DSpark drafter Markov walk: the step kernel with 128-bit weight loads, eight rows in flight and its inputs in registers (the old code read `inp[lane*16+k]` from shared memory at a stride of 16 words: a 16-way bank conflict); the logits kernel with 32 rows a warp, the double-precision `tanh` epilogue on all 32 lanes (it ran on one) and each loaded row shared by up to four requests; both launched with PDL. Same arithmetic order: hashes of state, latent and logits identical | 0.6025 | 48.73 | 2,086 / 1,811 / 1,533 | 11/11 |
 | #15 | `457d637` | narrow bf16 linear: the loads of 12 consecutive k chunks are issued before their multiply-accumulates (same chunk order per output) and the 8-column kernel is the default for every narrow launch | 0.6139 | 50.62 | 2,085 / 1,812 / 1,534 | 11/11 |
 | #16 | `457d637` | the same commit on a verified clean build (all ten gb-* crates recompiled; see "The build trap"): reproduces #15 | 0.6143 | 50.75 | 2,082 / 1,810 / 1,534 | 11/11 |
+| #17 | `bd307f5` | MoE prefill: expert groups and remainder in one list (`class_grid_fused`) | 0.6158 | 50.60 | 2,098 / 1,828 / 1,543 | 11/11 |
+| #18 | `1721743` | bf16 layer partials on the wire (`1eb7142`) and the 4-rank RoCE mesh for the decode collectives | 0.6212 | 53.33 | 2,026 / 1,742 / 1,487 | 11/11 |
+| #19 | `58c91f2` | K and V in the `w_q` launch, bf16 reduce-scatter and all-gather of the prefill sums, batched conv commits, drafter-chain PDL | 0.6442 | 53.69 | 2,164 / 1,867 / 1,571 | 11/11 |
+| #20 | `a73ff7a` | rank-symmetric gather choice for oracle dumps (the final commit) | **0.6464** | **54.14** | **2,161 / 1,868 / 1,575** | 11/11 |
 
 Lane profile (rank 0, cold 32K, 17.2 s, `--trace=cuda`): comm kernels 10.3 s of which 84% run under compute (1.7 s exposed); compute is 13.55 s on rank 0 and 16.0 s on rank 3 (experts E mod 4 give rank 3 about 12% more MoE rows), so the group is paced by rank 3. Splitting the rows makes the MoE kernels about 25% slower in total (gateup 2.0 ms per 2,048-row lane against 2.75 ms per 4,096-row chunk). Prefill is within about 7% of rank 3's compute: only kernel work helps from here.
 

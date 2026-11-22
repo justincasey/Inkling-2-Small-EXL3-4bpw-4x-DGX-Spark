@@ -7,7 +7,7 @@ START_S and END_S are seconds from the rank's first kernel. For each phase it pr
 kernel durations (idle = span minus union), the kernels by category (nccl, moe, linear, attention, drafter, ...) and by name, the
 host time in the CUDA runtime API (launches, stream syncs) and the sync and memcpy counts. Collective kernels (`ncclDevKernel_*`)
 include the time they wait for their peers. A profile is made with `PROFILE_NSYS=... ./inkling2.sh start`, `profile_driver.py`
-and `nsys export -t sqlite` (docs/exec-plans/active/autoresearch-segment-a.md, "Profile").
+and `nsys export -t sqlite` (docs/exec-plans/completed/autoresearch-segment-a.md, "Profile").
 """
 import collections
 import sqlite3

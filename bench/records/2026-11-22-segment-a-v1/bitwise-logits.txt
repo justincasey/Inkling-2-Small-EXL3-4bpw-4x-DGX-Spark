@@ -1,0 +1,21 @@
+Byte-for-byte check of every row's logits, 2026-11-21 (cluster idle, clocks as the harness), scripts/logits_check.sh under scripts/safeloop.sh
+
+Prompt: 9,292 ids (bench.long_ids), one cold request of 1 token, prefix cache off: prefill chunks of 4,096, 4,096 and 1,100 rows.
+  A       f4e27ca (pinned engine), full dump            DUMP_DIR=/home/spark/plp-A       request 13.2 s
+  Bfull   a73ff7a, full dump (lanes off)                plp-Bfull                        request 10.6 s
+  Blanes  a73ff7a, REXL3_INKLING2_DUMP_LOGITS_ONLY=1 (two lanes on, comm stream on)      request  6.8 s
+Each build compiled all ten gb-* crates (the build trap check: "crates compiled by this build: 10 (gb-cuda: 1)").
+
+Compared on each of ranks 0-3: cmp of plp-A/rankR/chunk0000{0,1,2}.{logits.f32,json} against the same file of Bfull and Blanes:
+
+== rank 0: 12 same, 0 differ
+== rank 1: 12 same, 0 differ
+== rank 2: 12 same, 0 differ
+== rank 3: 12 same, 0 differ
+
+48 of 48 identical. What it covers: every row's final hidden state of the 9,292-token prompt on all four ranks through all 48 layers, with this session's
+changes active: the bf16 reduce-scatter and the bf16 all-gather of the layer sums (every chunk's messages are past the 2 MiB threshold), the K and V
+projections inside the w_q launch, the two-lane path. Not covered by the dump (prefill only): decode windows, covered by the pin and spec gates (replies
+byte for byte, drafted == serial) and by the unit tests in tests.txt.
+
+Also run on a73ff7a: scripts/ops_dump_smoke.sh (REXL3_INKLING2_DUMP_OPS=1, four ranks, 1,200 ids, past the reduce-scatter size): PASS, 11 rank-0 dump files.
