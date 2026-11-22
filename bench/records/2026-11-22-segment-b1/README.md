@@ -30,14 +30,22 @@ The prefill costs 0.6-1.3% because a prefill chunk's wide kernels read bf16: the
 
 A bits-changing engine changes the greedy replies, and the benchmark's decode speed depends on the reply: DSpark accepts more tokens a round on repetitive text. In the
 int8 engine the *structured* prompt's reply falls into a loop after about 250 tokens (`<!-- harness-canary: canary-payments-gateway-7f3a9c1e -->` repeated, distinct
-4-gram ratio 0.27 against 0.97 with bf16) and decodes at 78 tok/s instead of 34: that one prompt carries 10.6 of the 14.8 tok/s the mean rose by. The like-for-like numbers:
+4-gram ratio 0.27 against 0.97 with bf16) and decodes at 78 tok/s instead of 34: that one prompt carries 10.6 of the 14.8 tok/s the mean rose by.
+
+**The clean measure: the same replies, only the kernels differ.** The probe engine (`REXL3_INKLING2_INT8=0 REXL3_INKLING2_FAKE_MXINT8=` all five groups: the bf16 kernels on weights rounded through the
+quantizer) produces exactly the replies of the real int8 engine (its pin gate passes against the references the real engine wrote; tokens a round 3.4771 in both). Two interleaved pairs of boots
+(`harness-runs/screen-fake-*` and `screen-real-*`, `warm,decode`): `decode_c1` 59.38 / 59.04 with the bf16 kernels, 68.98 / 68.59 with the int8 kernels, **x1.162**; by prompt prose x1.216, structured
+x1.162, json x1.148, code x1.152. That is the kernels' gain (about the 14.8% fewer bytes a round, plus the lower launch times). The rest of the 52.3 -> 68.8 (x1.316) is x1.13 from other
+replies: tokens a round 3.0431 -> 3.4771 is acceptance on different text, a draw and not a property of the format (the e4m3 engine drew 3.1703).
+
+Measures that compare different replies agree within their noise and are kept for the record:
 
 * the same-session screens (`harness-runs/20261122-015409` and `-020256` bf16, `-015933` and `-020634` int8, interleaved boots): prose 30.1 / 30.4 -> 35.3 / 35.3 (+17%),
   code 80.8 / 81.4 -> 90.7 / 91.3 (+12%), json 63.1 / 63.5 -> 72.0 / 72.2 (+14%);
-* 34 other prompts decoded 512 greedy tokens each by both engines (`loop-probe/`, `scripts/loop_probe.sh`): on the 26 that loop in neither, 50.0 -> 56.3 tok/s (**x1.125**);
+* 34 other prompts decoded 512 greedy tokens each by both engines (`loop-probe/`, `scripts/loop_probe.sh`): on the 26 that loop in neither, 50.0 -> 56.3 tok/s (x1.125);
   over all 34, 53.6 -> 63.6, which includes loops.
 
-So B1's decode gain is about +12 to +14%, not the +28% the harness mean shows (69.4 against 54.1). The harness's `target_score_raw` of B1 (0.7272 in the full run, `target_score` 0 because needle fails) is inflated by the loop in the same way.
+So B1's decode gain is **+16% from the kernels (identical replies)**, not the +28% the harness mean shows (69.4 against 54.1). The harness's `target_score_raw` of B1 (0.7272 in the full run, `target_score` 0 because needle fails) is inflated by the different replies in the same way.
 
 ## Fidelity
 
@@ -70,6 +78,12 @@ is untouched; the Segment A engine is the control):
 
 That is why the element is int8 and not e4m3: the e4m3 engine failed the drift gate on one fixture at a near-tie. The fixtures are 30 to 50 positions (and one 1,126), so a single
 near-tie decides a gate; int8 is also closer to bf16 in the routing sets (identical expert sets with the spec oracle: chat-sky 0.870 against e4m3's 0.825 and bf16's 0.892).
+
+**Against int8, and what the choice rests on.** The choice rests on one fixture's near-tie (margin 0.1115 against the gate's 0.1) and on routing-set overlap, which a different draw of
+fixtures could reverse. The long-prompt drift cannot rank the formats (int8 3.8e-4 and e4m3 5.3e-4 mean KL, 52 and 49 flipped rows, although the unit tests bound the relative RMS weight error at 0.01 for int8 and 0.04 for e4m3: it saturates).
+On the harness's structured prompt the e4m3 engine did *not* loop (45.2 tok/s, `harness-runs/20261122-002017`, a normal runbook reply) while int8 does (78 tok/s, the canary line repeated); the
+34-prompt loop probe was run for bf16 and int8 only, never for e4m3 (its engine is not in the branch any more: commits `4963e87` / `101bd67`), so nothing says e4m3 loops less over a population.
+An averaging measure was added afterwards (the NLL of the prompt's own next token, below) and was run for int8 only.
 
 ## The harness: 10 of 11 gates (`harness-runs/full-20261122-032109/gates.txt`; the pin run's agrees; the full run took 24 minutes, the `pin` gate: every reply of the second boot equals the pinned one)
 
