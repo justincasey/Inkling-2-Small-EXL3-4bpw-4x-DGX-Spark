@@ -20,12 +20,13 @@ W=/home/spark/q-work
 mkdir -p "$OUT/cmp"
 SHA=$(git -C "$CANDIDATE_SRC" rev-parse --short=12 HEAD)
 for h in "${H[@]}"; do $SSH spark@$h "rm -rf $DUMP"; done
-$SSH spark@${H[0]} "rm -rf $W && mkdir -p $W/tools $W/eng $W/cmp"
+$SSH spark@${H[0]} "rm -rf $W && mkdir -p $W/tools $W/eng $W/cmp $W/oracle"
 scp -q -o BatchMode=yes bench/tools/greedy.py bench/tools/inkling_api.py bench/tools/stlite.py bench/tools/merge_dump.py spark@${H[0]}:$W/tools/ || { echo "FAIL: copying the tools"; exit 1; }
+scp -q -o BatchMode=yes oracle/compare.py oracle/st.py spark@${H[0]}:$W/oracle/ || { echo "FAIL: copying the oracle's compare"; exit 1; }
 ./inkling2.sh stop >/dev/null 2>&1
 ./inkling2.sh build "$SHA" 2>&1 | tail -1
 echo "engine $SHA, env: $*"
-DUMP_DIR=$DUMP EXTRA_ENV="$*" EXTRA_FLAGS="--kv-tokens 262144" ./inkling2.sh start 2>&1 | grep -E 'boot_s=|FAIL|fatal'
+PREFIX_CACHE=off DUMP_DIR=$DUMP EXTRA_ENV="$*" EXTRA_FLAGS="--kv-tokens 262144" ./inkling2.sh start 2>&1 | grep -E 'boot_s=|FAIL|fatal'
 $SSH spark@${H[0]} "cd $W/tools && INKLING2_URL=http://127.0.0.1:8000 python3 greedy.py --fixtures $ORA/fixtures --teacher-force --out $W/greedy.json" 2>&1 | tail -12 | tee "$OUT/greedy.txt"
 ./inkling2.sh stop 2>&1 | tail -1
 for r in 1 2 3; do
@@ -33,7 +34,7 @@ for r in 1 2 3; do
 done
 for name in chat-capital-effort0 chat-sky-effort0.9 raw-counting raw-long-window; do
   echo "== $name"
-  $SSH spark@${H[0]} "cd $W && python3 tools/merge_dump.py --dump $DUMP --fixture $ORA/fixtures/$name.safetensors --greedy $W/greedy.json --name $name --out $W/eng/$name.safetensors 2>&1 | tail -2 && $ORA/.venv/bin/python $ORA/compare.py $ORA/fixtures/$name.safetensors $W/eng/$name.safetensors --json $W/cmp/$name.json --gates none 2>&1 | tail -14"
+  $SSH spark@${H[0]} "cd $W && python3 tools/merge_dump.py --dump $DUMP --fixture $ORA/fixtures/$name.safetensors --greedy $W/greedy.json --name $name --out $W/eng/$name.safetensors 2>&1 | tail -2 && cd $W/oracle && $ORA/.venv/bin/python compare.py $ORA/fixtures/$name.safetensors $W/eng/$name.safetensors --json $W/cmp/$name.json --gates none 2>&1 | tail -14"
 done 2>&1 | tee "$OUT/summary.txt"
 scp -q -o BatchMode=yes spark@${H[0]}:$W/greedy.json "$OUT/greedy.json"
 scp -q -o BatchMode=yes "spark@${H[0]}:$W/cmp/*.json" "$OUT/cmp/"
