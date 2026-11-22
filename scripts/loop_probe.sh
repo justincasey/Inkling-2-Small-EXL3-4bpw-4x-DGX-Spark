@@ -19,7 +19,6 @@ for v in "$@"; do
   ./inkling2.sh stop >/dev/null 2>&1
   EXTRA_ENV="$envs" ./inkling2.sh start 2>&1 | grep -E 'boot_s=|FAIL|fatal'
   python3 scripts/loop_probe.py run "$OUT/$label.json" | tail -3
-  python3 scripts/loop_probe.py run "$OUT/$label.json" | tail -3
   if [[ -n ${NEEDLE:-} ]]; then   # 200K needle at three depths with a 512-token answer budget (the gate's is 128): is the code found, and in how many reasoning tokens
     for d in 0.1 0.5 0.9; do
       python3 bench/tools/needle.py --tokens 200000 --depth "$d" --max-tokens 512 --out "$OUT/needle-$label-$d.json" >/dev/null 2>&1
