@@ -24,9 +24,9 @@ re-pin. Engine worktrees: `~/projects/rexl3-inkling2-b` (branch `inkling2-b`, th
 2. **The oracle's correctness gate.** `oracle/teacher_force.py` against the emulating oracle needs an `mxint8` emulation in `oracle/inkling2_ref.py` (the weights rounded through the same quantizer),
    and `oracle/` is off limits to the loop. What exists instead: the spec-oracle drift gate on the four fixtures (passes for int8), exact equality of the real engine with the bf16 kernels on
    rounded weights (9,292 rows, every kernel), and an independent re-implementation of the format (`tests/test_mxint8.py`). If the teacher-forced gate is required, say so and allow the oracle edit.
-3. **Promote B1 or not.** Gains, like for like: decode +12 to +14% (prose +17%, code +12%, json +14%; 34 prompts, the ones that loop in neither engine: x1.125), prefill -0.6 to -0.9%, +0.96 GiB of lowest free
-   memory and a 1.37 GiB larger prefix cache. Costs: every reply differs from Segment A's (first difference at tokens 17-165 on the pinned seven), three of 34 prompts loop that did not (five loop with
-   bf16 as well), and the harness's `decode_c1` (68.96) is inflated by one looping reply (+10.6 of the +14.8 over Segment A's 54.14).
+3. **Promote B1 or not.** Gains: decode **x1.162 at identical replies** (the bf16 kernels on rounded weights against the int8 kernels, two interleaved pairs; by prompt x1.15 to x1.22), prefill -0.6 to -1.3%,
+   +1.6 GiB of lowest free memory and 1.6 GiB less weights a rank. Costs: every reply differs from Segment A's (first difference at tokens 17-165 on the pinned seven), three of 34 prompts loop that did not
+   (five loop with bf16 as well), and the harness's `decode_c1` (69.42) holds, besides the kernels' x1.162, the acceptance on different text (x1.13, a draw) and one looping reply (+10.6 of the +15.3 over Segment A's 54.14).
 
 ## B1 as built
 

@@ -90,8 +90,8 @@ Scope: Segment A (bit-preserving, complete: tags `segment-a-v1` here and `inklin
 `segment-a-v1` tag holds the A pins). The `oracle` gate (`oracle/teacher_force.py` against the emulating oracle) is not wired in and was not run for B1: it needs an `mxint8`
 emulation in `oracle/`, which the loop may not edit; the spec-oracle drift gate (`scripts/quality_vs_spec.sh`) was run instead.
 
-Segment B1 (engine `c4a3a26`): 10 of 11 gates, the needle gate fails on its 128-token answer budget (the code is found in the reasoning). Like for like the decode is
-+12 to +14% (the harness's `decode_c1` 54.1 to 69.0 includes one reply that falls into a repetition loop), cold prefill -0.6 to -0.9%, lowest free memory +0.96 GiB.
+Segment B1 (engine `c4a3a26`): 10 of 11 gates, the needle gate fails on its 128-token answer budget (the code is found in the reasoning). The int8 kernels make decode **x1.16 at identical
+replies** (the harness's `decode_c1` 54.1 to 69.4 also holds different replies, one of them a repetition loop), cold prefill -0.6 to -1.3%, lowest free memory +1.6 GiB.
 
 Segment A result (record `bench/records/2026-11-22-segment-a-v1/`, engine `a73ff7a` against the pinned `f4e27ca`, all 11 gates): `target_score` 0.4422 to
 0.6464, decode (mean of four prompt types, one request) 42.2 to 54.1 tok/s, cold prefill at 32K / 128K / 256K 1,298 / 1,199 / 1,080 to 2,161 / 1,868 / 1,575 tok/s,
